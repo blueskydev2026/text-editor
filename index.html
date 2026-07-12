@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#166c5f">
+    <meta name="description" content="עורך טקסט עברי מקומי עם פתיחת DOCX, הערות שוליים, שמירת טיוטה והתקנה כאפליקציה.">
+    <title>עורך טקסט עברי</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icons/app-icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icons/app-icon-192.png">
+    <link rel="stylesheet" href="styles.css">
+    <script src="vendor/jszip.min.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <header class="appbar">
+      <div class="brand">
+        <span class="brand-mark">א</span>
+        <div>
+          <h1>עורך טקסט עברי</h1>
+          <p id="status">פתח קובץ DOCX או התחל מסמך חדש</p>
+        </div>
+      </div>
+
+      <div class="file-actions" aria-label="פעולות קובץ">
+        <button id="toolsToggleButton" class="button" type="button" aria-expanded="false" aria-controls="toolsDrawer">כלים וניווט</button>
+        <button id="openFileButton" class="button primary" type="button">פתיחת Word</button>
+        <label class="button primary fallback-open">
+          <input id="fileInput" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          פתיחת Word ללא הרשאת שמירה
+        </label>
+        <button id="newDocButton" class="button" type="button">מסמך חדש</button>
+        <button id="saveButton" class="button" type="button" disabled>שמירה כ־DOCX</button>
+        <button id="exportTextButton" class="button" type="button">הורדת טקסט</button>
+        <button id="autoSaveButton" class="button" type="button" disabled aria-pressed="false">שמירה אוטומטית</button>
+        <button id="installAppButton" class="button install-button" type="button" hidden>התקנה כאפליקציה</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+      <aside id="toolsDrawer" class="sidebar" aria-label="כלי עריכה" aria-hidden="true">
+        <div class="drawer-head">
+          <strong>כלים וניווט</strong>
+          <button id="closeToolsButton" class="icon-button" type="button" aria-label="סגור">×</button>
+        </div>
+        <section class="tool-section">
+          <h2>ניווט</h2>
+          <label class="zoom-control">
+            <span>מיקום</span>
+            <input id="documentPositionInput" type="range" min="0" max="100" value="0" step="1">
+            <output id="documentPositionOutput">0%</output>
+          </label>
+          <div id="headingNav" class="heading-nav" aria-label="ניווט לפי כותרות">
+            <p class="nav-empty">אין כותרות במסמך</p>
+          </div>
+        </section>
+        <section class="tool-section">
+          <h2>תצוגה</h2>
+          <div class="segmented" role="group" aria-label="רוחב מסך">
+            <button class="segment active" type="button" data-width="split">חצי מסך</button>
+            <button class="segment" type="button" data-width="wide">רחב</button>
+            <button class="segment" type="button" data-width="focus">ממוקד</button>
+          </div>
+          <label class="zoom-control">
+            <span>זום טקסט</span>
+            <input id="zoomInput" type="range" min="85" max="180" value="112" step="5">
+            <output id="zoomOutput">112%</output>
+          </label>
+          <div class="segmented zoom-mode" role="group" aria-label="מצב זום">
+            <button class="segment active" type="button" data-zoom-mode="shared">משותף</button>
+            <button class="segment" type="button" data-zoom-mode="separate">נפרד</button>
+          </div>
+          <label id="footnoteZoomControl" class="zoom-control footnote-zoom-control" hidden>
+            <span>זום הערות</span>
+            <input id="footnoteZoomInput" type="range" min="75" max="180" value="96" step="5">
+            <output id="footnoteZoomOutput">96%</output>
+          </label>
+        </section>
+
+        <section class="tool-section">
+          <h2>עיצוב</h2>
+          <div class="toolbar-grid" aria-label="פקודות עיצוב">
+            <button type="button" data-command="bold" title="הדגשה"><strong>ב</strong></button>
+            <button type="button" data-command="insertUnorderedList" title="רשימת תבליטים">•</button>
+            <button type="button" data-command="insertOrderedList" title="מספור">1.</button>
+            <button type="button" data-command="justifyRight" title="יישור לימין">ימין</button>
+            <button type="button" data-command="justifyCenter" title="מרכז">מרכז</button>
+            <button type="button" data-command="justifyFull" title="יישור לשני הצדדים">צדדים</button>
+          </div>
+          <label class="select-row">
+            <span>סגנון</span>
+            <select id="formatSelect">
+              <option value="p">פסקה</option>
+              <option value="h1">כותרת 1</option>
+              <option value="h2">כותרת 2</option>
+              <option value="h3">כותרת 3</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="tool-section">
+          <h2>הערות שוליים</h2>
+          <button id="insertFootnoteButton" class="button full" type="button" title="Ctrl+Alt+F">הוסף הערת שוליים</button>
+          <button id="toggleFootnotesButton" class="button full active" type="button" aria-pressed="true">הסתר חלונית</button>
+        </section>
+      </aside>
+
+      <section class="editor-shell split" id="editorShell">
+        <div class="editor-topline">
+          <div>
+            <strong id="documentName">מסמך ללא שם</strong>
+            <span id="documentMeta">תצוגה זורמת, מימין לשמאל</span>
+          </div>
+          <div class="editor-state">
+            <span id="documentStats">0 מילים</span>
+            <span class="autosave-state" id="saveState">מוכן לעריכה</span>
+          </div>
+        </div>
+        <article id="editor" class="editor" contenteditable="true" spellcheck="true" aria-label="אזור עריכת הטקסט">
+          <h2>מסמך חדש</h2>
+          <p></p>
+        </article>
+        <section id="footnotesPane" class="footnotes-pane" aria-label="חלונית הערות שוליים">
+          <div id="footnoteResizeHandle" class="footnote-resize-handle" role="separator" aria-orientation="horizontal" tabindex="0"></div>
+          <div class="footnotes-head">
+            <strong>הערות שוליים</strong>
+            <span id="activeFootnoteLabel">אין הערות במסמך</span>
+          </div>
+          <div id="footnotesList" class="footnotes-list"></div>
+        </section>
+      </section>
+    </main>
+
+    <div id="editorContextMenu" class="context-menu" role="menu" hidden>
+      <button id="contextInsertFootnoteButton" type="button" role="menuitem" title="Ctrl+Alt+F">הוסף הערת שוליים</button>
+    </div>
+
+    <template id="footnoteTemplate">
+      <article class="footnote-card" contenteditable="false">
+        <div class="footnote-number"></div>
+        <div class="footnote-body" contenteditable="true"></div>
+      </article>
+    </template>
+  </body>
+</html>
