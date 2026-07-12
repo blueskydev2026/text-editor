@@ -1,4 +1,4 @@
-const state = {
+﻿const state = {
   zip: null,
   fileName: "",
   documentXml: null,
@@ -69,6 +69,9 @@ const parser = new DOMParser();
 const serializer = new XMLSerializer();
 const wordNs = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const localDraftKey = "hebrew-text-editor-draft-v1";
+const footnoteTextStyleId = "FootnoteText";
+const footnoteReferenceStyleId = "FootnoteReference";
+const wordFontSize10pt = "20";
 let zoomMode = "shared";
 
 if (!window.showOpenFilePicker) {
@@ -126,18 +129,18 @@ function resetDocxState() {
   state.savedEditorRange = null;
   els.documentPositionInput.value = "0";
   els.documentPositionOutput.textContent = "0%";
-  els.headingNav.innerHTML = `<p class="nav-empty">אין כותרות במסמך</p>`;
+  els.headingNav.innerHTML = `<p class="nav-empty">׳׳™׳ ׳›׳•׳×׳¨׳•׳× ׳‘׳׳¡׳׳</p>`;
   els.footnotesList.innerHTML = "";
-  els.activeFootnoteLabel.textContent = "אין הערות במסמך";
+  els.activeFootnoteLabel.textContent = "׳׳™׳ ׳”׳¢׳¨׳•׳× ׳‘׳׳¡׳׳";
   els.footnotesPane.hidden = false;
   els.toggleFootnotesButton.classList.add("active");
   els.toggleFootnotesButton.setAttribute("aria-pressed", "true");
-  els.toggleFootnotesButton.textContent = "הסתר חלונית";
+  els.toggleFootnotesButton.textContent = "׳”׳¡׳×׳¨ ׳—׳׳•׳ ׳™׳×";
   if (els.autoSaveButton) {
     els.autoSaveButton.disabled = true;
     els.autoSaveButton.classList.remove("active");
     els.autoSaveButton.setAttribute("aria-pressed", "false");
-    els.autoSaveButton.textContent = "שמירה אוטומטית";
+    els.autoSaveButton.textContent = "׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳×";
   }
 }
 
@@ -145,7 +148,7 @@ function parseXml(xmlText) {
   const xml = parser.parseFromString(xmlText, "application/xml");
   const error = xml.querySelector("parsererror");
   if (error) {
-    throw new Error("לא הצלחתי לקרוא את מבנה ה־XML של המסמך.");
+    throw new Error("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳§׳¨׳•׳ ׳׳× ׳׳‘׳ ׳” ׳”ײ¾XML ׳©׳ ׳”׳׳¡׳׳.");
   }
   return xml;
 }
@@ -164,6 +167,55 @@ function isBoldRun(run) {
   return Array.from(qName(run, "b")).some(isWordToggleOn) || Array.from(qName(run, "bCs")).some(isWordToggleOn);
 }
 
+function runStyleDeclaration(run) {
+  const properties = qName(run, "rPr")[0];
+  if (!properties) return "";
+
+  const styles = [];
+  if (Array.from(qName(properties, "i")).some(isWordToggleOn) || Array.from(qName(properties, "iCs")).some(isWordToggleOn)) {
+    styles.push("font-style:italic");
+  }
+
+  const underline = qName(properties, "u")[0];
+  const underlineValue = underline ? attr(underline, "val") : "";
+  if (underline && underlineValue !== "none") styles.push("text-decoration:underline");
+
+  const color = qName(properties, "color")[0];
+  const colorValue = color ? attr(color, "val") : "";
+  if (colorValue && colorValue !== "auto") styles.push(`color:#${colorValue}`);
+
+  const highlight = qName(properties, "highlight")[0];
+  const highlightValue = highlight ? attr(highlight, "val") : "";
+  const highlightColors = {
+    yellow: "#fff59d",
+    green: "#c8e6c9",
+    cyan: "#b2ebf2",
+    magenta: "#f8bbd0",
+    blue: "#bbdefb",
+    red: "#ffcdd2",
+    darkBlue: "#90caf9",
+    darkCyan: "#80deea",
+    darkGreen: "#a5d6a7",
+    darkMagenta: "#ce93d8",
+    darkRed: "#ef9a9a",
+    darkYellow: "#ffe082",
+    darkGray: "#bdbdbd",
+    lightGray: "#eeeeee",
+    black: "#212121",
+  };
+  if (highlightColors[highlightValue]) styles.push(`background-color:${highlightColors[highlightValue]}`);
+
+  const size = qName(properties, "sz")[0] || qName(properties, "szCs")[0];
+  const sizeValue = size ? Number(attr(size, "val")) : 0;
+  if (sizeValue > 0) styles.push(`font-size:${sizeValue / 2}pt`);
+
+  const fonts = qName(properties, "rFonts")[0];
+  const fontValue = fonts ? (attr(fonts, "cs") || attr(fonts, "ascii") || attr(fonts, "hAnsi")) : "";
+  if (fontValue) styles.push(`font-family:${JSON.stringify(fontValue)}`);
+
+  return styles.join(";");
+}
+
 function normalizeStyleText(value) {
   return (value || "").replace(/\s+/g, "").toLowerCase();
 }
@@ -172,9 +224,9 @@ function headingTagFromStyle(styleId, styleName, outlineLevel) {
   const combined = `${styleId || ""} ${styleName || ""}`;
   const compact = normalizeStyleText(combined);
 
-  if (outlineLevel === "0" || /heading1|headline1/i.test(combined) || compact.includes("כותרת1") || compact.includes("כותרתא") || compact.includes("title")) return "h1";
-  if (outlineLevel === "1" || /heading2/i.test(combined) || compact.includes("כותרת2") || compact.includes("כותרתב")) return "h2";
-  if (outlineLevel === "2" || /heading3/i.test(combined) || compact.includes("כותרת3") || compact.includes("כותרתג")) return "h3";
+  if (outlineLevel === "0" || /heading1|headline1/i.test(combined) || compact.includes("׳›׳•׳×׳¨׳×1") || compact.includes("׳›׳•׳×׳¨׳×׳") || compact.includes("title")) return "h1";
+  if (outlineLevel === "1" || /heading2/i.test(combined) || compact.includes("׳›׳•׳×׳¨׳×2") || compact.includes("׳›׳•׳×׳¨׳×׳‘")) return "h2";
+  if (outlineLevel === "2" || /heading3/i.test(combined) || compact.includes("׳›׳•׳×׳¨׳×3") || compact.includes("׳›׳•׳×׳¨׳×׳’")) return "h3";
   return "p";
 }
 
@@ -206,9 +258,9 @@ function buildParagraphStyleMap() {
     if (tag === "h2" && !state.headingStyleIds.h2) state.headingStyleIds.h2 = styleId;
     if (tag === "h3" && !state.headingStyleIds.h3) state.headingStyleIds.h3 = styleId;
 
-    if (tag === "h1" && /heading1|כותרת\s*1/i.test(`${styleId} ${name}`)) state.headingStyleIds.h1 = styleId;
-    if (tag === "h2" && /heading2|כותרת\s*2/i.test(`${styleId} ${name}`)) state.headingStyleIds.h2 = styleId;
-    if (tag === "h3" && /heading3|כותרת\s*3/i.test(`${styleId} ${name}`)) state.headingStyleIds.h3 = styleId;
+    if (tag === "h1" && /heading1|׳›׳•׳×׳¨׳×\s*1/i.test(`${styleId} ${name}`)) state.headingStyleIds.h1 = styleId;
+    if (tag === "h2" && /heading2|׳›׳•׳×׳¨׳×\s*2/i.test(`${styleId} ${name}`)) state.headingStyleIds.h2 = styleId;
+    if (tag === "h3" && /heading3|׳›׳•׳×׳¨׳×\s*3/i.test(`${styleId} ${name}`)) state.headingStyleIds.h3 = styleId;
   });
 }
 
@@ -243,6 +295,7 @@ function buildFootnoteMap() {
 
     const pieces = [];
     Array.from(qName(note, "t")).forEach((textNode) => {
+      if (!pieces.length && /^\s+$/.test(textNode.textContent)) return;
       const textId = `fn-${id}-${state.nextTextId++}`;
       state.footnoteTextNodes.set(textId, textNode);
       pieces.push(`<span class="docx-footnote-text" data-footnote-text-id="${textId}">${escapeHtml(textNode.textContent)}</span>`);
@@ -265,8 +318,8 @@ function renderFootnoteCard(id) {
 
 function renderFootnotesPane() {
   if (!state.footnoteMap.size) {
-    els.footnotesList.innerHTML = `<p class="footnotes-empty">אין הערות שוליים במסמך הזה.</p>`;
-    els.activeFootnoteLabel.textContent = "אין הערות במסמך";
+    els.footnotesList.innerHTML = `<p class="footnotes-empty">׳׳™׳ ׳”׳¢׳¨׳•׳× ׳©׳•׳׳™׳™׳ ׳‘׳׳¡׳׳ ׳”׳–׳”.</p>`;
+    els.activeFootnoteLabel.textContent = "׳׳™׳ ׳”׳¢׳¨׳•׳× ׳‘׳׳¡׳׳";
     return;
   }
 
@@ -276,7 +329,7 @@ function renderFootnotesPane() {
     .join("");
 
   els.footnotesList.innerHTML = html;
-  els.activeFootnoteLabel.textContent = `${state.footnoteMap.size} הערות`;
+  els.activeFootnoteLabel.textContent = `${state.footnoteMap.size} ׳”׳¢׳¨׳•׳×`;
 }
 
 function createWordElement(name, doc = state.documentXml) {
@@ -315,13 +368,91 @@ function setRunBold(run, shouldBold) {
   properties.append(doc.createElementNS(wordNs, "w:bCs"));
 }
 
+function ensureRunStyle(run, styleId) {
+  const properties = ensureRunProperties(run);
+  let style = qName(properties, "rStyle")[0];
+  if (!style) {
+    const doc = run.ownerDocument || state.documentXml;
+    style = doc.createElementNS(wordNs, "w:rStyle");
+    properties.insertBefore(style, properties.firstChild);
+  }
+  setWordAttr(style, "val", styleId);
+}
+
+function setRunFontSize(run, size = wordFontSize10pt) {
+  const properties = ensureRunProperties(run);
+  removeWordChildren(properties, "sz");
+  removeWordChildren(properties, "szCs");
+
+  const doc = run.ownerDocument || state.documentXml;
+  const sz = doc.createElementNS(wordNs, "w:sz");
+  const szCs = doc.createElementNS(wordNs, "w:szCs");
+  setWordAttr(sz, "val", size);
+  setWordAttr(szCs, "val", size);
+  properties.append(sz, szCs);
+}
+
+function setRunRtl(run, isRtl = true) {
+  const properties = ensureRunProperties(run);
+  removeWordChildren(properties, "rtl");
+  if (!isRtl) return;
+
+  const doc = run.ownerDocument || state.documentXml;
+  properties.append(doc.createElementNS(wordNs, "w:rtl"));
+}
+
+function setRunSuperscript(run) {
+  const properties = ensureRunProperties(run);
+  removeWordChildren(properties, "vertAlign");
+
+  const doc = run.ownerDocument || state.documentXml;
+  const vertAlign = doc.createElementNS(wordNs, "w:vertAlign");
+  setWordAttr(vertAlign, "val", "superscript");
+  properties.append(vertAlign);
+}
+
+function setParagraphStyle(paragraph, styleId) {
+  const properties = ensureParagraphProperties(paragraph);
+  let pStyle = qName(properties, "pStyle")[0];
+
+  if (!pStyle) {
+    const doc = paragraph.ownerDocument || state.documentXml;
+    pStyle = doc.createElementNS(wordNs, "w:pStyle");
+    properties.insertBefore(pStyle, properties.firstChild);
+  }
+
+  setWordAttr(pStyle, "val", styleId);
+}
+
+function setParagraphRtl(paragraph, isRtl = true) {
+  const properties = ensureParagraphProperties(paragraph);
+  removeWordChildren(properties, "bidi");
+  if (!isRtl) return;
+
+  const doc = paragraph.ownerDocument || state.documentXml;
+  properties.append(doc.createElementNS(wordNs, "w:bidi"));
+}
+
+function setFootnoteParagraphDefaults(paragraph) {
+  setParagraphStyle(paragraph, footnoteTextStyleId);
+  setParagraphRtl(paragraph, true);
+  setParagraphAlignment(paragraph, "right");
+}
+
+function setFootnoteTextRunDefaults(run) {
+  setRunFontSize(run, wordFontSize10pt);
+  setRunRtl(run, true);
+}
+
+function setFootnoteReferenceRunDefaults(run) {
+  ensureRunStyle(run, footnoteReferenceStyleId);
+  setRunSuperscript(run);
+  setRunRtl(run, true);
+}
+
 function createFootnoteReferenceRun(id) {
   const run = createWordElement("r");
-  const properties = createWordElement("rPr");
-  const style = createWordElement("rStyle");
-  setWordAttr(style, "val", "FootnoteReference");
-  properties.append(style);
-  run.append(properties);
+  setFootnoteReferenceRunDefaults(run);
 
   const reference = createWordElement("footnoteReference");
   setWordAttr(reference, "id", id);
@@ -335,18 +466,25 @@ function createFootnoteXmlNode(id, textNode) {
   setWordAttr(footnote, "id", id);
 
   const paragraph = createWordElement("p", doc);
+  setFootnoteParagraphDefaults(paragraph);
+
   const referenceRun = createWordElement("r", doc);
-  const referenceProperties = createWordElement("rPr", doc);
-  const referenceStyle = createWordElement("rStyle", doc);
-  setWordAttr(referenceStyle, "val", "FootnoteReference");
-  referenceProperties.append(referenceStyle);
-  referenceRun.append(referenceProperties, createWordElement("footnoteRef", doc));
+  setFootnoteReferenceRunDefaults(referenceRun);
+  referenceRun.append(createWordElement("footnoteRef", doc));
+
+  const spaceRun = createWordElement("r", doc);
+  setFootnoteTextRunDefaults(spaceRun);
+  const space = createWordElement("t", doc);
+  space.setAttribute("xml:space", "preserve");
+  space.textContent = " ";
+  spaceRun.append(space);
 
   const textRun = createWordElement("r", doc);
+  setFootnoteTextRunDefaults(textRun);
   const text = createWordElement("t", doc);
   text.textContent = textNode;
   textRun.append(text);
-  paragraph.append(referenceRun, textRun);
+  paragraph.append(referenceRun, spaceRun, textRun);
   footnote.append(paragraph);
   return { footnote, text };
 }
@@ -523,7 +661,7 @@ function insertFootnote() {
   restoreEditorSelection();
   const selection = window.getSelection();
   if (!selection || !selection.rangeCount) {
-    setStatus("בחר מקום במסמך להוספת הערת שוליים", "error");
+    setStatus("׳‘׳—׳¨ ׳׳§׳•׳ ׳‘׳׳¡׳׳ ׳׳”׳•׳¡׳₪׳× ׳”׳¢׳¨׳× ׳©׳•׳׳™׳™׳", "error");
     return;
   }
 
@@ -532,12 +670,12 @@ function insertFootnote() {
     ? range.commonAncestorContainer
     : range.commonAncestorContainer.parentElement;
   if (!container || !els.editor.contains(container)) {
-    setStatus("אפשר להוסיף הערה רק מתוך אזור העריכה", "error");
+    setStatus("׳׳₪׳©׳¨ ׳׳”׳•׳¡׳™׳£ ׳”׳¢׳¨׳” ׳¨׳§ ׳׳×׳•׳ ׳׳–׳•׳¨ ׳”׳¢׳¨׳™׳›׳”", "error");
     return;
   }
 
   const id = nextFootnoteId();
-  const defaultText = "הערה חדשה";
+  const defaultText = "׳”׳¢׳¨׳” ׳—׳“׳©׳”";
   let insertedReference = false;
 
   if (state.isDocx && state.documentXml) {
@@ -557,7 +695,7 @@ function insertFootnote() {
 
   if (!insertedReference) {
     state.footnoteMap.delete(id);
-    setStatus("לא הצלחתי למצוא פסקה להוספת ההערה", "error");
+    setStatus("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳׳¦׳•׳ ׳₪׳¡׳§׳” ׳׳”׳•׳¡׳₪׳× ׳”׳”׳¢׳¨׳”", "error");
     return;
   }
 
@@ -565,22 +703,25 @@ function insertFootnote() {
   els.footnotesPane.hidden = false;
   els.toggleFootnotesButton.classList.add("active");
   els.toggleFootnotesButton.setAttribute("aria-pressed", "true");
-  els.toggleFootnotesButton.textContent = "הסתר חלונית";
+  els.toggleFootnotesButton.textContent = "׳”׳¡׳×׳¨ ׳—׳׳•׳ ׳™׳×";
   setActiveFootnote(id);
   focusFootnoteBody(id);
   markDocumentDirty();
-  setStatus("הערת שוליים נוספה", "dirty");
+  setStatus("׳”׳¢׳¨׳× ׳©׳•׳׳™׳™׳ ׳ ׳•׳¡׳₪׳”", "dirty");
 }
 
 function renderRun(run) {
   const chunks = [];
   const children = Array.from(run.childNodes);
+  const isBold = isBoldRun(run);
+  const style = runStyleDeclaration(run);
+  const styleAttr = style ? ` style="${escapeHtml(style)}"` : "";
   children.forEach((child) => {
     if (child.localName === "t") {
       const textId = `t-${state.nextTextId++}`;
       state.textNodes.set(textId, child);
       chunks.push(
-        `<span class="docx-run" data-text-id="${textId}" data-bold="${isBoldRun(run)}">${escapeHtml(child.textContent)}</span>`
+        `<span class="docx-run" data-text-id="${textId}" data-bold="${isBold}" data-original-bold="${isBold}"${styleAttr}>${escapeHtml(child.textContent)}</span>`
       );
     }
 
@@ -600,20 +741,21 @@ function renderParagraph(paragraph, index) {
   const align = paragraphAlignment(paragraph);
   const runs = Array.from(qName(paragraph, "r"));
   const content = runs.map(renderRun).join("") || escapeHtml(getParagraphText(paragraph));
-  const style = align === "center" ? "text-align:center" : align === "right" ? "text-align:right" : "";
+  const style = align === "center" ? "text-align:center" : align === "right" ? "text-align:right" : align === "both" ? "text-align:justify" : align === "left" ? "text-align:left" : "";
   const styleId = styleInfo.id ? ` data-word-style-id="${escapeHtml(styleInfo.id)}"` : "";
   const styleName = styleInfo.name ? ` data-word-style-name="${escapeHtml(styleInfo.name)}"` : "";
   const styleLevel = tag !== "p" ? ` data-style-level="${tag}"` : "";
-  return `<${tag} class="docx-paragraph word-style-${tag}" data-paragraph-index="${index}"${styleId}${styleName}${styleLevel} style="${style}">${content || "<br>"}</${tag}>`;
+  const wordAlign = align ? ` data-word-align="${escapeHtml(align)}"` : "";
+  return `<${tag} class="docx-paragraph word-style-${tag}" data-paragraph-index="${index}"${styleId}${styleName}${styleLevel}${wordAlign} style="${style}">${content || "<br>"}</${tag}>`;
 }
 
 async function openDocx(file, fileHandle = null) {
   if (!window.JSZip) {
-    throw new Error("ספריית JSZip עדיין לא נטענה. בדוק חיבור אינטרנט ורענן את הדף.");
+    throw new Error("׳¡׳₪׳¨׳™׳™׳× JSZip ׳¢׳“׳™׳™׳ ׳׳ ׳ ׳˜׳¢׳ ׳”. ׳‘׳“׳•׳§ ׳—׳™׳‘׳•׳¨ ׳׳™׳ ׳˜׳¨׳ ׳˜ ׳•׳¨׳¢׳ ׳ ׳׳× ׳”׳“׳£.");
   }
 
   resetDocxState();
-  setStatus("קורא את קובץ Word...", "busy");
+  setStatus("׳§׳•׳¨׳ ׳׳× ׳§׳•׳‘׳¥ Word...", "busy");
 
   const buffer = await file.arrayBuffer();
   state.zip = await JSZip.loadAsync(buffer);
@@ -622,7 +764,7 @@ async function openDocx(file, fileHandle = null) {
 
   const documentEntry = state.zip.file("word/document.xml");
   if (!documentEntry) {
-    throw new Error("זה לא נראה כמו קובץ DOCX תקין.");
+    throw new Error("׳–׳” ׳׳ ׳ ׳¨׳׳” ׳›׳׳• ׳§׳•׳‘׳¥ DOCX ׳×׳§׳™׳.");
   }
 
   state.documentXml = parseXml(await documentEntry.async("text"));
@@ -638,29 +780,30 @@ async function openDocx(file, fileHandle = null) {
   state.paragraphNodes = paragraphs;
   const html = paragraphs.map(renderParagraph).join("");
 
-  els.editor.innerHTML = html || `<p class="placeholder">המסמך נפתח, אבל לא נמצאו פסקאות טקסט לעריכה.</p>`;
+  els.editor.innerHTML = html || `<p class="placeholder">׳”׳׳¡׳׳ ׳ ׳₪׳×׳—, ׳׳‘׳ ׳׳ ׳ ׳׳¦׳׳• ׳₪׳¡׳§׳׳•׳× ׳˜׳§׳¡׳˜ ׳׳¢׳¨׳™׳›׳”.</p>`;
   renderFootnotesPane();
   buildHeadingNav();
   updateDocumentPositionSlider();
   updateDocumentStats();
   setTimeout(syncFootnoteToVisibleParagraph, 0);
   els.documentName.textContent = file.name;
-  els.documentMeta.textContent = `${paragraphs.length} פסקאות, ${state.footnoteMap.size} הערות שוליים`;
+  els.documentMeta.textContent = `${paragraphs.length} ׳₪׳¡׳§׳׳•׳×, ${state.footnoteMap.size} ׳”׳¢׳¨׳•׳× ׳©׳•׳׳™׳™׳`;
   els.saveButton.disabled = false;
   els.autoSaveButton.disabled = !state.openedFileHandle;
   state.isDocx = true;
-  setStatus(state.openedFileHandle ? "המסמך פתוח לעריכה עם הרשאת שמירה" : "המסמך פתוח לעריכה ללא הרשאת שמירה לקובץ המקורי", "ready");
+  setStatus(state.openedFileHandle ? "׳”׳׳¡׳׳ ׳₪׳×׳•׳— ׳׳¢׳¨׳™׳›׳” ׳¢׳ ׳”׳¨׳©׳׳× ׳©׳׳™׳¨׳”" : "׳”׳׳¡׳׳ ׳₪׳×׳•׳— ׳׳¢׳¨׳™׳›׳” ׳׳׳ ׳”׳¨׳©׳׳× ׳©׳׳™׳¨׳” ׳׳§׳•׳‘׳¥ ׳”׳׳§׳•׳¨׳™", "ready");
 }
 
 function setParagraphAlignment(paragraph, alignment) {
-  if (!paragraph || !state.documentXml) return;
+  if (!paragraph) return;
 
   const properties = ensureParagraphProperties(paragraph);
   removeWordChildren(properties, "jc");
 
   if (!alignment) return;
 
-  const jc = state.documentXml.createElementNS(wordNs, "w:jc");
+  const doc = paragraph.ownerDocument || state.documentXml;
+  const jc = doc.createElementNS(wordNs, "w:jc");
   setWordAttr(jc, "val", alignment);
   properties.append(jc);
 }
@@ -669,8 +812,9 @@ function paragraphAlignmentFromBlock(block) {
   const value = (block.style.textAlign || "").toLowerCase();
   if (value === "center") return "center";
   if (value === "left") return "left";
-  if (value === "right" || !value) return "right";
+  if (value === "right") return "right";
   if (value === "justify" || value === "start") return "both";
+  if (!value) return block.dataset.wordAlign || "";
   return "";
 }
 
@@ -691,7 +835,10 @@ function syncParagraphFormattingFromEditor() {
     const paragraph = Number.isInteger(paragraphIndex) ? state.paragraphNodes[paragraphIndex] : null;
     if (!paragraph) return;
 
-    setParagraphWordStyle(paragraph, formatFromBlock(block));
+    const format = formatFromBlock(block);
+    if (format !== "p" || !block.dataset.wordStyleId) {
+      setParagraphWordStyle(paragraph, format);
+    }
     setParagraphAlignment(paragraph, paragraphAlignmentFromBlock(block));
   });
 }
@@ -732,17 +879,182 @@ function syncFootnotesFromEditor() {
   });
 }
 
+function isRealFootnote(note) {
+  const id = Number(attr(note, "id"));
+  return Number.isFinite(id) && id > 0;
+}
+
+function runHasChild(run, localName) {
+  return Array.from(run.childNodes).some((child) => child.localName === localName);
+}
+
+function createFootnoteSpaceRun(doc) {
+  const run = createWordElement("r", doc);
+  setFootnoteTextRunDefaults(run);
+  const text = createWordElement("t", doc);
+  text.setAttribute("xml:space", "preserve");
+  text.textContent = " ";
+  run.append(text);
+  return run;
+}
+
+function runText(run) {
+  return Array.from(qName(run, "t")).map((node) => node.textContent).join("");
+}
+
+function ensureSpaceAfterFootnoteNumber(paragraph, referenceRun) {
+  let next = referenceRun.nextSibling;
+  while (next && next.nodeType !== Node.ELEMENT_NODE) next = next.nextSibling;
+
+  if (next?.localName === "r" && /^\s/.test(runText(next))) {
+    setFootnoteTextRunDefaults(next);
+    return;
+  }
+
+  paragraph.insertBefore(createFootnoteSpaceRun(paragraph.ownerDocument), referenceRun.nextSibling);
+}
+
+function normalizeFootnotesXmlForWord() {
+  if (!state.footnotesXml) return;
+
+  Array.from(qName(state.footnotesXml, "footnote")).forEach((note) => {
+    if (!isRealFootnote(note)) return;
+
+    Array.from(qName(note, "p")).forEach((paragraph) => {
+      setFootnoteParagraphDefaults(paragraph);
+
+      const runs = Array.from(qName(paragraph, "r"));
+      const referenceRun = runs.find((run) => runHasChild(run, "footnoteRef"));
+
+      runs.forEach((run) => {
+        if (runHasChild(run, "footnoteRef")) {
+          setFootnoteReferenceRunDefaults(run);
+          return;
+        }
+        setFootnoteTextRunDefaults(run);
+      });
+
+      if (referenceRun) ensureSpaceAfterFootnoteNumber(paragraph, referenceRun);
+    });
+  });
+}
+
+function normalizeDocumentFootnoteReferences() {
+  if (!state.documentXml) return;
+
+  Array.from(qName(state.documentXml, "r")).forEach((run) => {
+    if (runHasChild(run, "footnoteReference")) {
+      setFootnoteReferenceRunDefaults(run);
+    }
+  });
+}
+
+function styleById(styleId) {
+  if (!state.stylesXml) return null;
+  return Array.from(qName(state.stylesXml, "style")).find((style) => attr(style, "styleId") === styleId) || null;
+}
+
+function ensureStyleChild(style, localName) {
+  let child = qName(style, localName)[0];
+  if (child) return child;
+
+  child = state.stylesXml.createElementNS(wordNs, `w:${localName}`);
+  style.append(child);
+  return child;
+}
+
+function appendStyleMeta(style, localName, value = null) {
+  if (qName(style, localName)[0]) return;
+
+  const node = state.stylesXml.createElementNS(wordNs, `w:${localName}`);
+  if (value !== null) setWordAttr(node, "val", value);
+  style.append(node);
+}
+
+function createWordStyle(styleId, type, name) {
+  const style = state.stylesXml.createElementNS(wordNs, "w:style");
+  setWordAttr(style, "type", type);
+  setWordAttr(style, "styleId", styleId);
+  appendStyleMeta(style, "name", name);
+  return style;
+}
+
+function ensureFootnoteTextStyle() {
+  if (!state.stylesXml) return;
+
+  let style = styleById(footnoteTextStyleId);
+  if (!style) {
+    style = createWordStyle(footnoteTextStyleId, "paragraph", "footnote text");
+    appendStyleMeta(style, "basedOn", "Normal");
+    appendStyleMeta(style, "uiPriority", "99");
+    appendStyleMeta(style, "semiHidden");
+    appendStyleMeta(style, "unhideWhenUsed");
+    state.stylesXml.documentElement.append(style);
+  }
+
+  const pPr = ensureStyleChild(style, "pPr");
+  removeWordChildren(pPr, "bidi");
+  removeWordChildren(pPr, "jc");
+  pPr.append(state.stylesXml.createElementNS(wordNs, "w:bidi"));
+  const jc = state.stylesXml.createElementNS(wordNs, "w:jc");
+  setWordAttr(jc, "val", "right");
+  pPr.append(jc);
+
+  const rPr = ensureStyleChild(style, "rPr");
+  removeWordChildren(rPr, "sz");
+  removeWordChildren(rPr, "szCs");
+  removeWordChildren(rPr, "rtl");
+  const sz = state.stylesXml.createElementNS(wordNs, "w:sz");
+  const szCs = state.stylesXml.createElementNS(wordNs, "w:szCs");
+  setWordAttr(sz, "val", wordFontSize10pt);
+  setWordAttr(szCs, "val", wordFontSize10pt);
+  rPr.append(sz, szCs, state.stylesXml.createElementNS(wordNs, "w:rtl"));
+}
+
+function ensureFootnoteReferenceStyle() {
+  if (!state.stylesXml) return;
+
+  let style = styleById(footnoteReferenceStyleId);
+  if (!style) {
+    style = createWordStyle(footnoteReferenceStyleId, "character", "footnote reference");
+    appendStyleMeta(style, "basedOn", "DefaultParagraphFont");
+    appendStyleMeta(style, "uiPriority", "99");
+    appendStyleMeta(style, "semiHidden");
+    appendStyleMeta(style, "unhideWhenUsed");
+    state.stylesXml.documentElement.append(style);
+  }
+
+  const rPr = ensureStyleChild(style, "rPr");
+  removeWordChildren(rPr, "vertAlign");
+  const vertAlign = state.stylesXml.createElementNS(wordNs, "w:vertAlign");
+  setWordAttr(vertAlign, "val", "superscript");
+  rPr.append(vertAlign);
+}
+
+function ensureFootnoteStylesForWord() {
+  ensureFootnoteTextStyle();
+  ensureFootnoteReferenceStyle();
+}
+
 function updateXmlFromEditor() {
   state.textNodes.forEach((xmlNode, id) => {
     const htmlNode = els.editor.querySelector(`[data-text-id="${CSS.escape(id)}"]`);
     if (htmlNode) {
       xmlNode.textContent = htmlNode.textContent;
-      setRunBold(xmlNode.parentNode, htmlNode.dataset.bold === "true");
+      setTextSpacePreserve(xmlNode, htmlNode.textContent);
+      if (htmlNode.dataset.boldDirty === "true" || htmlNode.dataset.bold !== htmlNode.dataset.originalBold) {
+        setRunBold(xmlNode.parentNode, htmlNode.dataset.bold === "true");
+        htmlNode.dataset.originalBold = htmlNode.dataset.bold;
+        delete htmlNode.dataset.boldDirty;
+      }
     }
   });
 
   syncParagraphFormattingFromEditor();
   syncFootnotesFromEditor();
+  normalizeDocumentFootnoteReferences();
+  normalizeFootnotesXmlForWord();
+  ensureFootnoteStylesForWord();
 }
 
 function downloadBlob(blob, fileName) {
@@ -764,7 +1076,7 @@ function updateDocumentStats() {
   const text = plainEditorText();
   const words = text ? text.split(/\s+/).filter(Boolean).length : 0;
   const chars = text.length;
-  els.documentStats.textContent = `${words} מילים · ${chars} תווים`;
+  els.documentStats.textContent = `${words} ׳׳™׳׳™׳ ֲ· ${chars} ׳×׳•׳•׳™׳`;
 }
 
 function saveLocalDraft() {
@@ -798,11 +1110,11 @@ function restoreLocalDraft() {
       els.footnotesList.querySelectorAll(".footnote-card").forEach((card) => {
         state.footnoteMap.set(card.dataset.footnoteId, card.querySelector(".footnote-body")?.innerHTML || "");
       });
-      els.activeFootnoteLabel.textContent = state.footnoteMap.size ? `${state.footnoteMap.size} הערות` : "אין הערות במסמך";
+      els.activeFootnoteLabel.textContent = state.footnoteMap.size ? `${state.footnoteMap.size} ׳”׳¢׳¨׳•׳×` : "׳׳™׳ ׳”׳¢׳¨׳•׳× ׳‘׳׳¡׳׳";
     }
-    els.documentName.textContent = "טיוטה מקומית";
-    els.documentMeta.textContent = "נשמרת אוטומטית בדפדפן";
-    setStatus("טיוטה מקומית נטענה", "ready");
+    els.documentName.textContent = "׳˜׳™׳•׳˜׳” ׳׳§׳•׳׳™׳×";
+    els.documentMeta.textContent = "׳ ׳©׳׳¨׳× ׳׳•׳˜׳•׳׳˜׳™׳× ׳‘׳“׳₪׳“׳₪׳";
+    setStatus("׳˜׳™׳•׳˜׳” ׳׳§׳•׳׳™׳× ׳ ׳˜׳¢׳ ׳”", "ready");
     updateDocumentStats();
     buildHeadingNav();
     updateDocumentPositionSlider();
@@ -816,17 +1128,17 @@ function restoreLocalDraft() {
 function exportTextFile() {
   const text = plainEditorText();
   if (!text) {
-    setStatus("אין טקסט להורדה", "error");
+    setStatus("׳׳™׳ ׳˜׳§׳¡׳˜ ׳׳”׳•׳¨׳“׳”", "error");
     return;
   }
 
-  const cleanName = (state.fileName || els.documentName.textContent || "מסמך")
+  const cleanName = (state.fileName || els.documentName.textContent || "׳׳¡׳׳")
     .replace(/\.docx$/i, "")
     .replace(/[\\/:*?"<>|]/g, "-")
-    .trim() || "מסמך";
+    .trim() || "׳׳¡׳׳";
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
   downloadBlob(blob, `${cleanName}.txt`);
-  setStatus("קובץ הטקסט ירד למחשב", "ready");
+  setStatus("׳§׳•׳‘׳¥ ׳”׳˜׳§׳¡׳˜ ׳™׳¨׳“ ׳׳׳—׳©׳‘", "ready");
 }
 
 async function createDocxBlob() {
@@ -838,6 +1150,9 @@ async function createDocxBlob() {
   if (state.footnotesXml) {
     state.zip.file("word/footnotes.xml", serializer.serializeToString(state.footnotesXml));
   }
+  if (state.stylesXml) {
+    state.zip.file("word/styles.xml", serializer.serializeToString(state.stylesXml));
+  }
 
   return state.zip.generateAsync({
     type: "blob",
@@ -848,12 +1163,12 @@ async function createDocxBlob() {
 async function saveDocx() {
   if (!state.zip || !state.documentXml) return;
 
-  setStatus("שומר DOCX...", "busy");
+  setStatus("׳©׳•׳׳¨ DOCX...", "busy");
   const blob = await createDocxBlob();
 
   const cleanName = state.fileName.replace(/\.docx$/i, "");
   downloadBlob(blob, `${cleanName}-edited.docx`);
-  setStatus("המסמך נשמר כקובץ חדש", "ready");
+  setStatus("׳”׳׳¡׳׳ ׳ ׳©׳׳¨ ׳›׳§׳•׳‘׳¥ ׳—׳“׳©", "ready");
 }
 
 async function writeAutoSave() {
@@ -861,19 +1176,19 @@ async function writeAutoSave() {
 
   state.isAutoSaving = true;
   try {
-    setStatus("שומר אוטומטית...", "busy");
+    setStatus("׳©׳•׳׳¨ ׳׳•׳˜׳•׳׳˜׳™׳×...", "busy");
     const blob = await createDocxBlob();
     const writable = await state.openedFileHandle.createWritable();
     await writable.write(blob);
     await writable.close();
-    setStatus("נשמר אוטומטית בקובץ המקורי", "ready");
+    setStatus("׳ ׳©׳׳¨ ׳׳•׳˜׳•׳׳˜׳™׳× ׳‘׳§׳•׳‘׳¥ ׳”׳׳§׳•׳¨׳™", "ready");
   } catch (error) {
     console.error(error);
     state.autoSaveEnabled = false;
     els.autoSaveButton.classList.remove("active");
     els.autoSaveButton.setAttribute("aria-pressed", "false");
-    els.autoSaveButton.textContent = "שמירה אוטומטית";
-    setStatus("השמירה האוטומטית נכשלה וכובתה", "error");
+    els.autoSaveButton.textContent = "׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳×";
+    setStatus("׳”׳©׳׳™׳¨׳” ׳”׳׳•׳˜׳•׳׳˜׳™׳× ׳ ׳›׳©׳׳” ׳•׳›׳•׳‘׳×׳”", "error");
   } finally {
     state.isAutoSaving = false;
   }
@@ -889,7 +1204,7 @@ function scheduleAutoSave() {
 
 async function toggleAutoSave() {
   if (!state.isDocx) {
-    setStatus("שמירה אוטומטית זמינה אחרי פתיחת קובץ DOCX", "error");
+    setStatus("׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳× ׳–׳׳™׳ ׳” ׳׳—׳¨׳™ ׳₪׳×׳™׳—׳× ׳§׳•׳‘׳¥ DOCX", "error");
     return;
   }
 
@@ -898,13 +1213,13 @@ async function toggleAutoSave() {
     state.autoSaveEnabled = false;
     els.autoSaveButton.classList.remove("active");
     els.autoSaveButton.setAttribute("aria-pressed", "false");
-    els.autoSaveButton.textContent = "שמירה אוטומטית";
-    setStatus("שמירה אוטומטית כבויה", "ready");
+    els.autoSaveButton.textContent = "׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳×";
+    setStatus("׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳× ׳›׳‘׳•׳™׳”", "ready");
     return;
   }
 
   if (!state.openedFileHandle) {
-    setStatus("כדי לשמור אוטומטית לקובץ המקורי, פתח את הקובץ דרך כפתור פתיחת Word בדפדפן Chrome או Edge.", "error");
+    setStatus("׳›׳“׳™ ׳׳©׳׳•׳¨ ׳׳•׳˜׳•׳׳˜׳™׳× ׳׳§׳•׳‘׳¥ ׳”׳׳§׳•׳¨׳™, ׳₪׳×׳— ׳׳× ׳”׳§׳•׳‘׳¥ ׳“׳¨׳ ׳›׳₪׳×׳•׳¨ ׳₪׳×׳™׳—׳× Word ׳‘׳“׳₪׳“׳₪׳ Chrome ׳׳• Edge.", "error");
     return;
   }
 
@@ -912,13 +1227,13 @@ async function toggleAutoSave() {
     state.autoSaveEnabled = true;
     els.autoSaveButton.classList.add("active");
     els.autoSaveButton.setAttribute("aria-pressed", "true");
-    els.autoSaveButton.textContent = "שמירה אוטומטית פעילה";
-    setStatus("שמירה אוטומטית פעילה לקובץ המקורי", "ready");
+    els.autoSaveButton.textContent = "׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳× ׳₪׳¢׳™׳׳”";
+    setStatus("׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳× ׳₪׳¢׳™׳׳” ׳׳§׳•׳‘׳¥ ׳”׳׳§׳•׳¨׳™", "ready");
     await writeAutoSave();
   } catch (error) {
     if (error.name !== "AbortError") {
       console.error(error);
-      setStatus("לא הצלחתי להפעיל שמירה אוטומטית", "error");
+      setStatus("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳”׳₪׳¢׳™׳ ׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳×", "error");
     }
   }
 }
@@ -927,23 +1242,200 @@ function newDocument() {
   resetDocxState();
   localStorage.removeItem(localDraftKey);
   els.editor.innerHTML = `
-    <h2>מסמך חדש</h2>
+    <h2>׳׳¡׳׳ ׳—׳“׳©</h2>
     <p></p>
   `;
-  els.footnotesList.innerHTML = `<p class="footnotes-empty">אין הערות שוליים במסמך הזה.</p>`;
-  els.activeFootnoteLabel.textContent = "אין הערות במסמך";
+  els.footnotesList.innerHTML = `<p class="footnotes-empty">׳׳™׳ ׳”׳¢׳¨׳•׳× ׳©׳•׳׳™׳™׳ ׳‘׳׳¡׳׳ ׳”׳–׳”.</p>`;
+  els.activeFootnoteLabel.textContent = "׳׳™׳ ׳”׳¢׳¨׳•׳× ׳‘׳׳¡׳׳";
   buildHeadingNav();
   updateDocumentPositionSlider();
-  els.documentName.textContent = "מסמך ללא שם";
-  els.documentMeta.textContent = "תצוגה זורמת, מימין לשמאל";
+  els.documentName.textContent = "׳׳¡׳׳ ׳׳׳ ׳©׳";
+  els.documentMeta.textContent = "׳×׳¦׳•׳’׳” ׳–׳•׳¨׳׳×, ׳׳™׳׳™׳ ׳׳©׳׳׳";
   els.saveButton.disabled = true;
   updateDocumentStats();
-  setStatus("מסמך חדש מוכן לעריכה", "ready");
+  setStatus("׳׳¡׳׳ ׳—׳“׳© ׳׳•׳›׳ ׳׳¢׳¨׳™׳›׳”", "ready");
+}
+
+function selectedDocxRuns() {
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount) return [];
+
+  const range = selection.getRangeAt(0);
+  if (range.collapsed) {
+    const node = selection.anchorNode?.nodeType === Node.TEXT_NODE ? selection.anchorNode.parentElement : selection.anchorNode;
+    const run = node?.closest?.(".docx-run");
+    return run ? [run] : [];
+  }
+
+  return Array.from(els.editor.querySelectorAll(".docx-run")).filter((run) => range.intersectsNode(run));
+}
+
+function textLengthOfRunSpan(runSpan) {
+  return runSpan.textContent.length;
+}
+
+function rangeOffsetsInRunSpan(range, runSpan) {
+  if (!range.intersectsNode(runSpan)) return null;
+  const runRange = document.createRange();
+  runRange.selectNodeContents(runSpan);
+  const length = textLengthOfRunSpan(runSpan);
+
+  let start = 0;
+  if (range.compareBoundaryPoints(Range.START_TO_START, runRange) > 0) {
+    const before = document.createRange();
+    before.selectNodeContents(runSpan);
+    before.setEnd(range.startContainer, range.startOffset);
+    start = Math.max(0, Math.min(length, before.toString().length));
+    before.detach();
+  }
+
+  let end = length;
+  if (range.compareBoundaryPoints(Range.END_TO_END, runRange) < 0) {
+    const selected = document.createRange();
+    selected.selectNodeContents(runSpan);
+    selected.setStart(runSpan, 0);
+    selected.setEnd(range.endContainer, range.endOffset);
+    end = Math.max(start, Math.min(length, selected.toString().length));
+    selected.detach();
+  }
+
+  runRange.detach();
+  return { start, end };
+}
+
+function setTextSpacePreserve(textNode, text) {
+  if (/^\s|\s$/.test(text)) {
+    textNode.setAttribute("xml:space", "preserve");
+  } else {
+    textNode.removeAttribute("xml:space");
+  }
+}
+
+function cloneRunWithText(sourceRun, text, shouldBold) {
+  const doc = sourceRun.ownerDocument || state.documentXml;
+  const run = doc.createElementNS(wordNs, "w:r");
+  const properties = qName(sourceRun, "rPr")[0];
+  if (properties) run.append(properties.cloneNode(true));
+
+  const textNode = doc.createElementNS(wordNs, "w:t");
+  textNode.textContent = text;
+  setTextSpacePreserve(textNode, text);
+  run.append(textNode);
+  setRunBold(run, shouldBold);
+  return { run, textNode };
+}
+
+function runSpanAttributes(sourceSpan, textId, shouldBold) {
+  const attrs = [
+    `class="docx-run"`,
+    `data-text-id="${escapeHtml(textId)}"`,
+    `data-bold="${shouldBold}"`,
+    `data-original-bold="${shouldBold}"`,
+  ];
+  const style = sourceSpan.getAttribute("style");
+  if (style) attrs.push(`style="${escapeHtml(style)}"`);
+  return attrs.join(" ");
+}
+
+function replaceRunSpanWithParts(sourceSpan, parts) {
+  const html = parts
+    .map((part) => `<span ${runSpanAttributes(sourceSpan, part.textId, part.bold)}>${escapeHtml(part.text)}</span>`)
+    .join("");
+  sourceSpan.insertAdjacentHTML("beforebegin", html);
+  sourceSpan.remove();
+}
+
+function splitDocxRunForBold(runSpan, start, end, shouldBold) {
+  const text = runSpan.textContent;
+  const xmlTextNode = state.textNodes.get(runSpan.dataset.textId);
+  const sourceRun = xmlTextNode?.parentNode;
+  const parent = sourceRun?.parentNode;
+  if (!text || !sourceRun || !parent || start >= end) return false;
+
+  const segments = [
+    { text: text.slice(0, start), bold: runSpan.dataset.bold === "true" },
+    { text: text.slice(start, end), bold: shouldBold },
+    { text: text.slice(end), bold: runSpan.dataset.bold === "true" },
+  ].filter((segment) => segment.text);
+
+  const fragment = sourceRun.ownerDocument.createDocumentFragment();
+  const parts = segments.map((segment) => {
+    const { run, textNode } = cloneRunWithText(sourceRun, segment.text, segment.bold);
+    const textId = `t-${state.nextTextId++}`;
+    state.textNodes.set(textId, textNode);
+    fragment.append(run);
+    return { ...segment, textId };
+  });
+
+  state.textNodes.delete(runSpan.dataset.textId);
+  parent.insertBefore(fragment, sourceRun);
+  sourceRun.remove();
+  replaceRunSpanWithParts(runSpan, parts);
+  return true;
+}
+
+function toggleWordBoldSelection() {
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount) return false;
+
+  const range = selection.getRangeAt(0);
+  const runs = selectedDocxRuns();
+  if (!runs.length) return false;
+
+  const shouldBold = !runs.every((run) => run.dataset.bold === "true");
+  runs.forEach((run) => {
+    if (!range.collapsed) {
+      const offsets = rangeOffsetsInRunSpan(range, run);
+      const runLength = textLengthOfRunSpan(run);
+      if (offsets && (offsets.start > 0 || offsets.end < runLength)) {
+        splitDocxRunForBold(run, offsets.start, offsets.end, shouldBold);
+        return;
+      }
+    }
+
+    run.dataset.bold = String(shouldBold);
+    run.dataset.boldDirty = "true";
+    const xmlTextNode = state.textNodes.get(run.dataset.textId);
+    setRunBold(xmlTextNode?.parentNode, shouldBold);
+  });
+
+  markDocumentDirty();
+  setStatus(shouldBold ? "ההדגשה תישמר ב-Word" : "ההדגשה הוסרה ותישמר ב-Word", "dirty");
+  return true;
+}
+
+function applyEditorAlignment(command) {
+  const block = selectedEditorBlock();
+  const alignment = {
+    justifyRight: "right",
+    justifyCenter: "center",
+    justifyLeft: "left",
+    justifyFull: "justify",
+  }[command];
+
+  document.execCommand(command, false, null);
+  if (!alignment || !block) return;
+
+  block.style.textAlign = alignment;
+  block.dataset.wordAlign = paragraphAlignmentFromBlock(block);
+  const paragraphIndex = Number(block.dataset.paragraphIndex);
+  if (Number.isInteger(paragraphIndex)) {
+    setParagraphAlignment(state.paragraphNodes[paragraphIndex], paragraphAlignmentFromBlock(block));
+  }
 }
 
 function runCommand(command, value = null) {
   els.editor.focus();
-  document.execCommand(command, false, value);
+  if (command === "bold" && state.isDocx && toggleWordBoldSelection()) return;
+
+  if (command.startsWith("justify")) {
+    applyEditorAlignment(command);
+  } else {
+    document.execCommand(command, false, value);
+  }
+
+  syncParagraphFormattingFromEditor();
+  markDocumentDirty();
   setStatus("השינוי הוחל", "ready");
 }
 
@@ -967,7 +1459,8 @@ function ensureParagraphProperties(paragraph) {
   let properties = qName(paragraph, "pPr")[0];
   if (properties) return properties;
 
-  properties = state.documentXml.createElementNS(wordNs, "w:pPr");
+  const doc = paragraph.ownerDocument || state.documentXml;
+  properties = doc.createElementNS(wordNs, "w:pPr");
   paragraph.insertBefore(properties, paragraph.firstChild);
   return properties;
 }
@@ -1038,7 +1531,7 @@ function setActiveFootnote(id, shouldScroll = true) {
   els.editor.querySelectorAll(".footnote-ref").forEach((ref) => {
     ref.classList.toggle("active", ref.dataset.footnoteRef === id);
   });
-  els.activeFootnoteLabel.textContent = `הערה ${id}`;
+  els.activeFootnoteLabel.textContent = `׳”׳¢׳¨׳” ${id}`;
 
   if (shouldScroll) {
     const card = els.footnotesList.querySelector(`[data-footnote-id="${CSS.escape(id)}"]`);
@@ -1085,7 +1578,7 @@ function markDocumentDirty() {
   updateDocumentPositionSlider();
   updateDocumentStats();
   saveLocalDraft();
-  setStatus(state.isDocx ? "יש שינויים שלא נשמרו" : "נערך", "dirty");
+  setStatus(state.isDocx ? "׳™׳© ׳©׳™׳ ׳•׳™׳™׳ ׳©׳׳ ׳ ׳©׳׳¨׳•" : "׳ ׳¢׳¨׳", "dirty");
   scheduleAutoSave();
 }
 
@@ -1134,7 +1627,7 @@ function setToolsDrawerOpen(isOpen) {
 }
 
 function headingTitle(heading) {
-  return heading.textContent.replace(/\s+/g, " ").trim() || "כותרת ללא טקסט";
+  return heading.textContent.replace(/\s+/g, " ").trim() || "׳›׳•׳×׳¨׳× ׳׳׳ ׳˜׳§׳¡׳˜";
 }
 
 function headingLevel(heading) {
@@ -1148,7 +1641,7 @@ function buildHeadingNav() {
   const uniqueHeadings = headings.filter((heading, index, all) => all.indexOf(heading) === index);
 
   if (!uniqueHeadings.length) {
-    els.headingNav.innerHTML = `<p class="nav-empty">אין כותרות במסמך</p>`;
+    els.headingNav.innerHTML = `<p class="nav-empty">׳׳™׳ ׳›׳•׳×׳¨׳•׳× ׳‘׳׳¡׳׳</p>`;
     return;
   }
 
@@ -1230,13 +1723,13 @@ function setupInstallPrompt() {
   window.addEventListener("appinstalled", () => {
     state.deferredInstallPrompt = null;
     els.installAppButton.hidden = true;
-    setStatus("האפליקציה הותקנה", "ready");
+    setStatus("׳”׳׳₪׳׳™׳§׳¦׳™׳” ׳”׳•׳×׳§׳ ׳”", "ready");
   });
 }
 
 async function installApp() {
   if (!state.deferredInstallPrompt) {
-    setStatus("התקנה זמינה אחרי פתיחה דרך שרת מקומי או אתר מאובטח", "error");
+    setStatus("׳”׳×׳§׳ ׳” ׳–׳׳™׳ ׳” ׳׳—׳¨׳™ ׳₪׳×׳™׳—׳” ׳“׳¨׳ ׳©׳¨׳× ׳׳§׳•׳׳™ ׳׳• ׳׳×׳¨ ׳׳׳•׳‘׳˜׳—", "error");
     return;
   }
 
@@ -1244,7 +1737,7 @@ async function installApp() {
   const choice = await state.deferredInstallPrompt.userChoice;
   state.deferredInstallPrompt = null;
   els.installAppButton.hidden = true;
-  if (choice.outcome === "accepted") setStatus("האפליקציה הותקנה", "ready");
+  if (choice.outcome === "accepted") setStatus("׳”׳׳₪׳׳™׳§׳¦׳™׳” ׳”׳•׳×׳§׳ ׳”", "ready");
 }
 
 function registerServiceWorker() {
@@ -1279,7 +1772,7 @@ els.openFileButton.addEventListener("click", async () => {
   } catch (error) {
     if (error.name !== "AbortError") {
       console.error(error);
-      setStatus("לא הצלחתי לפתוח את קובץ Word", "error");
+      setStatus("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳₪׳×׳•׳— ׳׳× ׳§׳•׳‘׳¥ Word", "error");
     }
   }
 });
@@ -1311,6 +1804,13 @@ els.drawerBackdrop.addEventListener("click", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "b" && state.isDocx) {
+    event.preventDefault();
+    els.editor.focus();
+    toggleWordBoldSelection();
+    return;
+  }
+
   if (isInsertFootnoteShortcut(event)) {
     event.preventDefault();
     hideEditorContextMenu();
@@ -1334,19 +1834,19 @@ els.exportTextButton.addEventListener("click", exportTextFile);
 els.installAppButton.addEventListener("click", () => {
   installApp().catch((error) => {
     console.error(error);
-    setStatus("לא הצלחתי לפתוח התקנה", "error");
+    setStatus("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳₪׳×׳•׳— ׳”׳×׳§׳ ׳”", "error");
   });
 });
 els.saveButton.addEventListener("click", () => {
   saveDocx().catch((error) => {
     console.error(error);
-    setStatus("השמירה נכשלה. כדאי לנסות שוב או לשמור עותק מהטקסט.", "error");
+    setStatus("׳”׳©׳׳™׳¨׳” ׳ ׳›׳©׳׳”. ׳›׳“׳׳™ ׳׳ ׳¡׳•׳× ׳©׳•׳‘ ׳׳• ׳׳©׳׳•׳¨ ׳¢׳•׳×׳§ ׳׳”׳˜׳§׳¡׳˜.", "error");
   });
 });
 els.autoSaveButton.addEventListener("click", () => {
   toggleAutoSave().catch((error) => {
     console.error(error);
-    setStatus("לא הצלחתי להפעיל שמירה אוטומטית", "error");
+    setStatus("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳”׳₪׳¢׳™׳ ׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳×", "error");
   });
 });
 
@@ -1421,7 +1921,7 @@ els.documentPositionInput.addEventListener("change", () => {
 els.toggleFootnotesButton.addEventListener("click", () => {
   els.footnotesPane.hidden = !els.footnotesPane.hidden;
   const hidden = els.footnotesPane.hidden;
-  els.toggleFootnotesButton.textContent = hidden ? "הצג חלונית" : "הסתר חלונית";
+  els.toggleFootnotesButton.textContent = hidden ? "׳”׳¦׳’ ׳—׳׳•׳ ׳™׳×" : "׳”׳¡׳×׳¨ ׳—׳׳•׳ ׳™׳×";
   els.toggleFootnotesButton.classList.toggle("active", !hidden);
   els.toggleFootnotesButton.setAttribute("aria-pressed", String(!hidden));
   if (!hidden) setTimeout(syncFootnoteToVisibleParagraph, 0);
