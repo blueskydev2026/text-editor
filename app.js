@@ -1145,16 +1145,23 @@ function syncParagraphStructureFromEditor() {
 
   const blocks = editorParagraphBlocks();
   const originalParagraphs = [...state.paragraphNodes];
+  const seenParagraphIndexes = new Set();
+  blocks.forEach((block) => {
+    const index = block.dataset.paragraphIndex;
+    if (index === undefined) return;
+    if (seenParagraphIndexes.has(index)) {
+      delete block.dataset.paragraphIndex;
+      block.dataset.newParagraph = "true";
+      return;
+    }
+    seenParagraphIndexes.add(index);
+  });
   const mappedBlocks = blocks.filter((block) => block.dataset.paragraphIndex !== undefined);
   const mappedParagraphs = mappedBlocks.map((block) => originalParagraphs[Number(block.dataset.paragraphIndex)]);
 
   if (mappedParagraphs.some((paragraph) => !paragraph)) {
     throw new Error("מיפוי הפסקאות השתבש. יש לפתוח מחדש את המסמך לפני השמירה.");
   }
-  if (new Set(mappedParagraphs).size !== mappedParagraphs.length) {
-    throw new Error("נמצאה פסקה כפולה. יש לפתוח מחדש את המסמך לפני השמירה.");
-  }
-
   const mappedOriginalOrder = mappedParagraphs.map((paragraph) => originalParagraphs.indexOf(paragraph));
   if (mappedOriginalOrder.some((value, index) => index && value < mappedOriginalOrder[index - 1])) {
     throw new Error("שינוי סדר פסקאות עדיין אינו נתמך, ולכן השמירה נעצרה.");
@@ -1252,6 +1259,65 @@ function syncFootnoteReferencePositions() {
     });
   });
   purgeOrphanedFootnotes();
+}
+
+function ensureReferencedFootnotesExist() {
+  if (!state.documentXml) return;
+  const referencedIds = new Set(Array.from(qName(state.documentXml, "footnoteReference")).map((node) => attr(node, "id")));
+  referencedIds.forEach((id) => {
+    if (footnoteXmlById(id)) return;
+    if (!state.footnoteMap.has(id)) {
+      throw new Error(`הפניה להערת שוליים ${id} אינה מצביעה על הערה קיימת.`);
+    }
+    ensureFootnotesXml();
+    const card = els.footnotesList.querySelector(`[data-footnote-id="${CSS.escape(id)}"]`);
+    const textValue = card ? visibleFootnoteText(card) : "הערה חדשה";
+    const root = qName(state.footnotesXml, "footnotes")[0] || state.footnotesXml.documentElement;
+    const { footnote, text } = createFootnoteXmlNode(id, textValue);
+    root.append(footnote);
+    state.footnoteTextNodes.set(`fn-${id}-${state.nextTextId++}`, text);
+  });
+}
+
+function renumberFootnotesByReferenceOrder() {
+  if (!state.documentXml || !state.footnotesXml) return;
+  const orderedIds = [];
+  Array.from(qName(state.documentXml, "footnoteReference")).forEach((reference) => {
+    const id = attr(reference, "id");
+    if (!orderedIds.includes(id)) orderedIds.push(id);
+  });
+  const mapping = new Map(orderedIds.map((id, index) => [id, String(index + 1)]));
+  if ([...mapping].every(([oldId, newId]) => oldId === newId)) return;
+
+  Array.from(qName(state.documentXml, "footnoteReference")).forEach((reference) => {
+    const newId = mapping.get(attr(reference, "id"));
+    if (newId) setWordAttr(reference, "id", `tmp-${newId}`);
+  });
+  Array.from(qName(state.footnotesXml, "footnote")).forEach((note) => {
+    const newId = mapping.get(attr(note, "id"));
+    if (newId) setWordAttr(note, "id", `tmp-${newId}`);
+  });
+  Array.from(qName(state.documentXml, "footnoteReference")).forEach((reference) => {
+    const temporary = attr(reference, "id");
+    if (temporary?.startsWith("tmp-")) setWordAttr(reference, "id", temporary.slice(4));
+  });
+  Array.from(qName(state.footnotesXml, "footnote")).forEach((note) => {
+    const temporary = attr(note, "id");
+    if (temporary?.startsWith("tmp-")) setWordAttr(note, "id", temporary.slice(4));
+  });
+
+  const remappedNotes = new Map();
+  orderedIds.forEach((oldId) => remappedNotes.set(mapping.get(oldId), state.footnoteMap.get(oldId)));
+  state.footnoteMap = remappedNotes;
+  state.activeFootnoteId = mapping.get(state.activeFootnoteId) || null;
+  els.editor.querySelectorAll(".footnote-ref[data-footnote-ref]").forEach((ref) => {
+    const newId = mapping.get(ref.dataset.footnoteRef);
+    if (newId) {
+      ref.dataset.footnoteRef = newId;
+      ref.textContent = newId;
+    }
+  });
+  renderFootnotesPane();
 }
 
 function assertXmlIsReadable(xmlText, partName) {
@@ -1393,6 +1459,8 @@ async function createDocxBlob() {
   updateXmlFromEditor();
   syncParagraphStructureFromEditor();
   syncFootnoteReferencePositions();
+  ensureReferencedFootnotesExist();
+  renumberFootnotesByReferenceOrder();
   normalizeDocumentFootnoteReferences();
   normalizeFootnotesXmlForWord();
   await ensureDocxFootnotePackageParts();
