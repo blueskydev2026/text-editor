@@ -308,6 +308,7 @@ function renderFootnoteCard(id) {
     <article class="footnote-card" data-footnote-id="${escapeHtml(id)}" contenteditable="false">
       <div class="footnote-number">${escapeHtml(id)}</div>
       <div class="footnote-body" contenteditable="true">${body}</div>
+      <button class="footnote-delete" type="button" data-delete-footnote="${escapeHtml(id)}" aria-label="מחק הערת שוליים ${escapeHtml(id)}">מחיקה</button>
     </article>
   `;
 }
@@ -704,6 +705,42 @@ function insertFootnote() {
   focusFootnoteBody(id);
   markDocumentDirty();
   setStatus("הערת שוליים נוספה", "dirty");
+}
+
+function removeFootnote(id) {
+  if (!id || !state.footnoteMap.has(id)) return;
+
+  els.editor.querySelectorAll(`.footnote-ref[data-footnote-ref="${CSS.escape(id)}"]`).forEach((ref) => ref.remove());
+
+  if (state.documentXml) {
+    Array.from(qName(state.documentXml, "footnoteReference"))
+      .filter((reference) => attr(reference, "id") === id)
+      .forEach((reference) => {
+        const run = reference.parentNode;
+        reference.remove();
+        if (run?.localName === "r" && !Array.from(run.childNodes).some((node) =>
+          ["t", "tab", "br", "footnoteReference"].includes(node.localName)
+        )) run.remove();
+      });
+  }
+
+  if (state.footnotesXml) {
+    Array.from(qName(state.footnotesXml, "footnote"))
+      .filter((note) => attr(note, "id") === id)
+      .forEach((note) => {
+        state.footnoteTextNodes.forEach((textNode, textId) => {
+          if (note.contains(textNode)) state.footnoteTextNodes.delete(textId);
+        });
+        note.remove();
+      });
+  }
+
+  state.footnoteMap.delete(id);
+  if (state.activeFootnoteId === id) state.activeFootnoteId = null;
+  renderFootnotesPane();
+  syncFootnoteToVisibleParagraph();
+  markDocumentDirty();
+  setStatus(`הערת שוליים ${id} נמחקה`, "dirty");
 }
 
 function renderRun(run) {
@@ -2183,6 +2220,12 @@ els.toggleFootnotesButton.addEventListener("click", () => {
 
 els.editor.addEventListener("input", markDocumentDirty);
 els.footnotesList.addEventListener("input", markDocumentDirty);
+els.footnotesList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-delete-footnote]");
+  if (!button) return;
+  const id = button.dataset.deleteFootnote;
+  if (window.confirm(`למחוק את הערת השוליים ${id} ואת כל ההפניות אליה?`)) removeFootnote(id);
+});
 els.editor.addEventListener("scroll", () => {
   hideEditorContextMenu();
   syncFootnoteToVisibleParagraph();
