@@ -662,6 +662,22 @@ p {
   text-align: right;
 }
 
+.footnote-delete {
+  align-self: start;
+  min-height: 28px;
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+  color: #8c3030;
+  font-size: 0.78em;
+}
+
+.footnote-delete:hover,
+.footnote-delete:focus-visible {
+  border-color: #c98f8f;
+  background: #fff3f3;
+}
+
 .footnote-card.active {
   background: #f0faf7;
   box-shadow: inset 0 0 0 1px var(--accent);
