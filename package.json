@@ -1,0 +1,11 @@
+{
+  "name": "hebrew-text-editor",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:docx": "playwright test tests/docx-roundtrip.spec.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.53.2"
+  }
+}
