@@ -66,3 +66,107 @@ test("deletes a footnote and all of its references", async ({ page }) => {
   expect(footnotesXml).toContain('w:id="-1"');
   expect(footnotesXml).toContain('w:id="0"');
 });
+
+test("saves partial text deletion and whole paragraph deletion", async ({ page }) => {
+  const fixture = await makeDocxFixture();
+  await page.goto("/");
+  await page.locator("#fileInput").setInputFiles({ name: "delete.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: fixture });
+  await page.locator("#editor").evaluate((editor) => {
+    const blocks = Array.from(editor.children);
+    blocks[1].querySelector("[data-text-id]").textContent = "פסקה";
+    blocks[2].remove();
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+  });
+  const pending = page.waitForEvent("download");
+  await page.locator("#saveButton").click();
+  const output = await require("node:fs/promises").readFile(await (await pending).path());
+  const xml = await (await JSZip.loadAsync(output)).file("word/document.xml").async("text");
+  expect(xml).toContain(">פסקה<");
+  expect(xml).not.toContain("פסקה ראשונה");
+  expect(xml).not.toContain("פסקה שנייה");
+});
+
+test("moving a footnote reference updates its Word paragraph", async ({ page }) => {
+  const fixture = await makeDocxFixture();
+  await page.goto("/");
+  await page.locator("#fileInput").setInputFiles({ name: "move.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: fixture });
+  await page.locator("#editor").evaluate((editor) => {
+    const blocks = Array.from(editor.children);
+    blocks[1].append(blocks[2].querySelector(".footnote-ref"));
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  });
+  const pending = page.waitForEvent("download");
+  await page.locator("#saveButton").click();
+  const output = await require("node:fs/promises").readFile(await (await pending).path());
+  const xml = await (await JSZip.loadAsync(output)).file("word/document.xml").async("text");
+  expect(xml.indexOf("footnoteReference")).toBeLessThan(xml.indexOf("פסקה שנייה"));
+});
+
+test("deleting a reference from the document removes its orphaned footnote", async ({ page }) => {
+  const fixture = await makeDocxFixture();
+  await page.goto("/");
+  await page.locator("#fileInput").setInputFiles({ name: "orphan.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: fixture });
+  await page.locator(".footnote-ref").evaluate((node) => node.remove());
+  await page.locator("#editor").dispatchEvent("input");
+  const pending = page.waitForEvent("download");
+  await page.locator("#saveButton").click();
+  const output = await require("node:fs/promises").readFile(await (await pending).path());
+  const zip = await JSZip.loadAsync(output);
+  expect(await zip.file("word/document.xml").async("text")).not.toContain("footnoteReference");
+  expect(await zip.file("word/footnotes.xml").async("text")).not.toMatch(/<w:footnote[^>]+w:id="1"/);
+});
+
+test("Word paste omits the appended footnote body", async ({ page }) => {
+  await page.goto("/");
+  await page.locator("#editor").click();
+  await page.locator("#editor").evaluate((editor) => {
+    const data = new DataTransfer();
+    data.setData("text/html", '<p class="MsoNormal">גוף מועתק<a href="#_ftn1">1</a></p><div style="mso-element:footnote-list"><div style="mso-element:footnote" id="ftn1"><p class="MsoFootnoteText">הערה מועתקת</p></div></div>');
+    editor.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
+  });
+  await expect(page.locator("#editor")).toContainText("גוף מועתק");
+  await expect(page.locator("#editor")).not.toContainText("הערה מועתקת");
+});
+
+test("autosave persists body, footnote text and reference position", async ({ page }) => {
+  const fixture = await makeDocxFixture();
+  const base64 = fixture.toString("base64");
+  await page.addInitScript(({ base64 }) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    window.__autoSaveWrites = [];
+    const file = new File([bytes], "autosave.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    window.showOpenFilePicker = async () => [{
+      getFile: async () => file,
+      createWritable: async () => ({
+        write: async (blob) => window.__autoSaveWrites.push(blob),
+        close: async () => {},
+      }),
+    }];
+  }, { base64 });
+
+  await page.goto("/");
+  await page.locator("#openFileButton").click();
+  await expect(page.locator("#editor")).toContainText("פסקה ראשונה");
+  await page.locator("#autoSaveButton").click();
+  await expect.poll(() => page.evaluate(() => window.__autoSaveWrites.length)).toBeGreaterThan(0);
+
+  await page.locator("#editor").evaluate((editor) => {
+    const blocks = Array.from(editor.children);
+    blocks[1].querySelector("[data-text-id]").textContent = "גוף שנשמר אוטומטית";
+    blocks[1].append(blocks[2].querySelector(".footnote-ref"));
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  });
+  await page.locator('[data-footnote-id="1"] .footnote-body').evaluate((body) => {
+    body.append(document.createTextNode(" ותוספת חדשה"));
+    body.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  });
+
+  await expect(page.locator("#saveState")).toHaveText("נשמר אוטומטית בקובץ המקורי", { timeout: 5000 });
+  const savedBytes = await page.evaluate(async () => Array.from(new Uint8Array(await window.__autoSaveWrites.at(-1).arrayBuffer())));
+  const zip = await JSZip.loadAsync(Buffer.from(savedBytes));
+  const documentXml = await zip.file("word/document.xml").async("text");
+  const footnotesXml = await zip.file("word/footnotes.xml").async("text");
+  expect(documentXml).toContain("גוף שנשמר אוטומטית");
+  expect(documentXml.indexOf("footnoteReference")).toBeLessThan(documentXml.indexOf("פסקה שנייה"));
+  expect(footnotesXml).toContain("ותוספת חדשה");
+});

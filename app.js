@@ -899,13 +899,18 @@ function syncFootnotesFromEditor() {
     if (!note) return;
 
     const body = card.querySelector(".footnote-body");
-    const hasTrackedText = body?.querySelector("[data-footnote-text-id]");
-    if (hasTrackedText) return;
-
     const textNodes = Array.from(qName(note, "t"));
     if (!textNodes.length) return;
 
-    textNodes[0].textContent = visibleFootnoteText(card);
+    const visibleText = visibleFootnoteText(card);
+    const trackedText = Array.from(body?.querySelectorAll("[data-footnote-text-id]") || [])
+      .map((node) => node.textContent)
+      .join("")
+      .trim();
+    if (trackedText === visibleText) return;
+
+    textNodes[0].textContent = visibleText;
+    setTextSpacePreserve(textNodes[0], visibleText);
     textNodes.slice(1).forEach((node) => {
       node.textContent = "";
     });
@@ -1082,6 +1087,10 @@ function updateXmlFromEditor() {
         htmlNode.dataset.originalBold = htmlNode.dataset.bold;
         delete htmlNode.dataset.boldDirty;
       }
+    } else if (xmlNode.isConnected) {
+      const run = xmlNode.parentNode;
+      xmlNode.remove();
+      if (run?.localName === "r" && !qName(run, "t").length && !qName(run, "footnoteReference").length) run.remove();
     }
   });
 
@@ -1198,6 +1207,51 @@ function syncParagraphStructureFromEditor() {
     block.classList.add("docx-paragraph");
     delete block._wordParagraph;
   });
+}
+
+function purgeOrphanedFootnotes() {
+  if (!state.documentXml) return;
+  const referencedIds = new Set(Array.from(qName(state.documentXml, "footnoteReference")).map((node) => attr(node, "id")));
+  Array.from(state.footnoteMap.keys()).forEach((id) => {
+    if (referencedIds.has(id)) return;
+    if (state.footnotesXml) {
+      Array.from(qName(state.footnotesXml, "footnote"))
+        .filter((note) => attr(note, "id") === id)
+        .forEach((note) => note.remove());
+    }
+    state.footnoteMap.delete(id);
+    state.footnoteTextNodes.forEach((node, key) => {
+      if (!node.isConnected) state.footnoteTextNodes.delete(key);
+    });
+  });
+}
+
+function syncFootnoteReferencePositions() {
+  if (!state.documentXml) return;
+
+  Array.from(qName(state.documentXml, "footnoteReference")).forEach((reference) => {
+    const run = reference.parentNode;
+    reference.remove();
+    if (run?.localName === "r" && !qName(run, "t").length) run.remove();
+  });
+
+  editorParagraphBlocks().forEach((block) => {
+    const paragraph = state.paragraphNodes[Number(block.dataset.paragraphIndex)];
+    if (!paragraph) return;
+    Array.from(block.querySelectorAll(".footnote-ref[data-footnote-ref]")).forEach((ref) => {
+      const id = ref.dataset.footnoteRef;
+      const referenceRun = createFootnoteReferenceRun(id);
+      const tracked = Array.from(block.querySelectorAll("[data-text-id]"));
+      const previous = tracked.filter((span) => span.compareDocumentPosition(ref) & Node.DOCUMENT_POSITION_FOLLOWING).at(-1);
+      const next = tracked.find((span) => span.compareDocumentPosition(ref) & Node.DOCUMENT_POSITION_PRECEDING);
+      const previousRun = previous ? state.textNodes.get(previous.dataset.textId)?.parentNode : null;
+      const nextRun = next ? state.textNodes.get(next.dataset.textId)?.parentNode : null;
+      if (previousRun?.parentNode === paragraph) paragraph.insertBefore(referenceRun, previousRun.nextSibling);
+      else if (nextRun?.parentNode === paragraph) paragraph.insertBefore(referenceRun, nextRun);
+      else paragraph.append(referenceRun);
+    });
+  });
+  purgeOrphanedFootnotes();
 }
 
 function assertXmlIsReadable(xmlText, partName) {
@@ -1338,6 +1392,9 @@ async function createDocxBlob() {
 
   updateXmlFromEditor();
   syncParagraphStructureFromEditor();
+  syncFootnoteReferencePositions();
+  normalizeDocumentFootnoteReferences();
+  normalizeFootnotesXmlForWord();
   await ensureDocxFootnotePackageParts();
   state.zip.file("word/document.xml", serializer.serializeToString(state.documentXml));
   if (state.footnotesXml) {
@@ -2219,6 +2276,16 @@ els.toggleFootnotesButton.addEventListener("click", () => {
 });
 
 els.editor.addEventListener("input", markDocumentDirty);
+els.editor.addEventListener("paste", (event) => {
+  const html = event.clipboardData?.getData("text/html") || "";
+  if (!html || !/mso-|MsoFootnote|MsoEndnote/i.test(html)) return;
+  event.preventDefault();
+  const doc = parser.parseFromString(html, "text/html");
+  doc.querySelectorAll('[style*="mso-element:footnote" i], [style*="mso-element:endnote" i], .MsoFootnoteText, .MsoEndnoteText, [id^="ftn"], [id^="edn"]').forEach((node) => node.remove());
+  doc.querySelectorAll('a[href^="#_ftn"], a[href^="#_edn"]').forEach((node) => node.remove());
+  document.execCommand("insertHTML", false, doc.body.innerHTML);
+  markDocumentDirty();
+});
 els.footnotesList.addEventListener("input", markDocumentDirty);
 els.footnotesList.addEventListener("click", (event) => {
   const button = event.target.closest("[data-delete-footnote]");
