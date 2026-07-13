@@ -170,3 +170,53 @@ test("autosave persists body, footnote text and reference position", async ({ pa
   expect(documentXml.indexOf("footnoteReference")).toBeLessThan(documentXml.indexOf("פסקה שנייה"));
   expect(footnotesXml).toContain("ותוספת חדשה");
 });
+
+test("drag-style paragraph duplication is normalized instead of blocking save", async ({ page }) => {
+  const fixture = await makeDocxFixture();
+  await page.goto("/");
+  await page.locator("#fileInput").setInputFiles({ name: "drag.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: fixture });
+  await page.locator("#editor").evaluate((editor) => {
+    const source = editor.children[2];
+    const duplicate = source.cloneNode(true);
+    duplicate.querySelectorAll("[data-text-id]").forEach((node) => node.remove());
+    duplicate.textContent = "פסקה שנוצרה בזמן גרירה";
+    duplicate.append(source.querySelector(".footnote-ref"));
+    source.after(duplicate);
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertFromDrop" }));
+  });
+  const pending = page.waitForEvent("download");
+  await page.locator("#saveButton").click();
+  const output = await require("node:fs/promises").readFile(await (await pending).path());
+  const zip = await JSZip.loadAsync(output);
+  expect(await zip.file("word/document.xml").async("text")).toContain("פסקה שנוצרה בזמן גרירה");
+  expect(await zip.file("word/footnotes.xml").async("text")).toMatch(/<w:footnote[^>]+w:id="1"/);
+});
+
+test("new footnotes are renumbered by their order in the document", async ({ page }) => {
+  const fixture = await makeDocxFixture();
+  await page.goto("/");
+  await page.locator("#fileInput").setInputFiles({ name: "numbering.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: fixture });
+  await page.locator("#editor").evaluate((editor) => {
+    const text = editor.children[0].querySelector("[data-text-id]").firstChild;
+    const range = document.createRange();
+    range.setStart(text, 1);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event("selectionchange"));
+  });
+  await page.locator("#insertFootnoteButton").click();
+  const pending = page.waitForEvent("download");
+  await page.locator("#saveButton").click();
+  const output = await require("node:fs/promises").readFile(await (await pending).path());
+  const zip = await JSZip.loadAsync(output);
+  const documentXml = await zip.file("word/document.xml").async("text");
+  const footnotesXml = await zip.file("word/footnotes.xml").async("text");
+  const referenceIds = [...documentXml.matchAll(/footnoteReference[^>]+w:id="(\d+)"/g)].map((match) => match[1]);
+  expect(referenceIds).toEqual(["1", "2"]);
+  expect(footnotesXml).toMatch(/<w:footnote[^>]+w:id="1"/);
+  expect(footnotesXml).toMatch(/<w:footnote[^>]+w:id="2"/);
+  await expect(page.locator('[data-footnote-id="1"]')).toHaveCount(1);
+  await expect(page.locator('[data-footnote-id="2"]')).toHaveCount(1);
+});
