@@ -24,7 +24,6 @@
       </div>
 
       <div class="file-actions" aria-label="פעולות קובץ">
-        <button id="toolsToggleButton" class="button" type="button" aria-expanded="false" aria-controls="toolsDrawer">כלים וניווט</button>
         <button id="openFileButton" class="button primary" type="button">פתיחת Word</button>
         <label class="button primary fallback-open">
           <input id="fileInput" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
@@ -36,11 +35,7 @@
         <button id="autoSaveButton" class="button" type="button" disabled aria-pressed="false">שמירה אוטומטית</button>
         <button id="installAppButton" class="button install-button" type="button" hidden>התקנה כאפליקציה</button>
       </div>
-    </header>
-
-    <main class="workspace">
-      <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
-      <aside id="toolsDrawer" class="sidebar" aria-label="כלי עריכה" aria-hidden="true">
+      <aside id="toolsDrawer" class="top-tools" aria-label="כלי עריכה" aria-hidden="false">
         <div class="drawer-head">
           <strong>כלים וניווט</strong>
           <button id="closeToolsButton" class="icon-button" type="button" aria-label="סגור">×</button>
@@ -106,6 +101,10 @@
           <button id="toggleFootnotesButton" class="button full active" type="button" aria-pressed="true">הסתר חלונית</button>
         </section>
       </aside>
+    </header>
+
+    <main class="workspace">
+      <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
 
       <section class="editor-shell split" id="editorShell">
         <div class="editor-topline">

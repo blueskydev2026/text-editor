@@ -1620,10 +1620,15 @@ function setZoomMode(mode) {
 }
 
 function setToolsDrawerOpen(isOpen) {
+  if (!els.toolsDrawer) return;
   els.toolsDrawer.classList.toggle("open", isOpen);
-  els.toolsDrawer.setAttribute("aria-hidden", String(!isOpen));
-  els.toolsToggleButton.setAttribute("aria-expanded", String(isOpen));
-  els.drawerBackdrop.hidden = !isOpen;
+  els.toolsDrawer.setAttribute("aria-hidden", "false");
+  if (els.toolsToggleButton) {
+    els.toolsToggleButton.setAttribute("aria-expanded", String(isOpen));
+  }
+  if (els.drawerBackdrop) {
+    els.drawerBackdrop.hidden = true;
+  }
 }
 
 function headingTitle(heading) {
@@ -1791,17 +1796,23 @@ els.fileInput.addEventListener("change", async (event) => {
   }
 });
 
-els.toolsToggleButton.addEventListener("click", () => {
-  setToolsDrawerOpen(!els.toolsDrawer.classList.contains("open"));
-});
+if (els.toolsToggleButton) {
+  els.toolsToggleButton.addEventListener("click", () => {
+    setToolsDrawerOpen(!els.toolsDrawer.classList.contains("open"));
+  });
+}
 
-els.closeToolsButton.addEventListener("click", () => {
-  setToolsDrawerOpen(false);
-});
+if (els.closeToolsButton) {
+  els.closeToolsButton.addEventListener("click", () => {
+    setToolsDrawerOpen(false);
+  });
+}
 
-els.drawerBackdrop.addEventListener("click", () => {
-  setToolsDrawerOpen(false);
-});
+if (els.drawerBackdrop) {
+  els.drawerBackdrop.addEventListener("click", () => {
+    setToolsDrawerOpen(false);
+  });
+}
 
 document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "b" && state.isDocx) {
