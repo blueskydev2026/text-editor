@@ -38,3 +38,31 @@ test("opens, edits paragraph structure and produces a readable DOCX", async ({ p
   expect(await zip.file("word/media/preserved.txt").async("text")).toBe("חלק שאסור למחוק");
   expect(zip.file("word/footnotes.xml")).toBeTruthy();
 });
+
+test("deletes a footnote and all of its references", async ({ page }) => {
+  const fixture = await makeDocxFixture();
+  await page.goto("/");
+  await page.locator("#fileInput").setInputFiles({
+    name: "footnote.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    buffer: fixture,
+  });
+
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.locator('[data-delete-footnote="1"]').click();
+  await expect(page.locator('[data-footnote-id="1"]')).toHaveCount(0);
+  await expect(page.locator('[data-footnote-ref="1"]')).toHaveCount(0);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#saveButton").click();
+  const download = await downloadPromise;
+  const output = await require("node:fs/promises").readFile(await download.path());
+  const zip = await JSZip.loadAsync(output);
+  const documentXml = await zip.file("word/document.xml").async("text");
+  const footnotesXml = await zip.file("word/footnotes.xml").async("text");
+
+  expect(documentXml).not.toMatch(/footnoteReference[^>]+w:id="1"/);
+  expect(footnotesXml).not.toMatch(/<w:footnote[^>]+w:id="1"/);
+  expect(footnotesXml).toContain('w:id="-1"');
+  expect(footnotesXml).toContain('w:id="0"');
+});
