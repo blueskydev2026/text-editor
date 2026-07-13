@@ -127,3 +127,46 @@ test("Word paste omits the appended footnote body", async ({ page }) => {
   await expect(page.locator("#editor")).toContainText("גוף מועתק");
   await expect(page.locator("#editor")).not.toContainText("הערה מועתקת");
 });
+
+test("autosave persists body, footnote text and reference position", async ({ page }) => {
+  const fixture = await makeDocxFixture();
+  const base64 = fixture.toString("base64");
+  await page.addInitScript(({ base64 }) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    window.__autoSaveWrites = [];
+    const file = new File([bytes], "autosave.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    window.showOpenFilePicker = async () => [{
+      getFile: async () => file,
+      createWritable: async () => ({
+        write: async (blob) => window.__autoSaveWrites.push(blob),
+        close: async () => {},
+      }),
+    }];
+  }, { base64 });
+
+  await page.goto("/");
+  await page.locator("#openFileButton").click();
+  await expect(page.locator("#editor")).toContainText("פסקה ראשונה");
+  await page.locator("#autoSaveButton").click();
+  await expect.poll(() => page.evaluate(() => window.__autoSaveWrites.length)).toBeGreaterThan(0);
+
+  await page.locator("#editor").evaluate((editor) => {
+    const blocks = Array.from(editor.children);
+    blocks[1].querySelector("[data-text-id]").textContent = "גוף שנשמר אוטומטית";
+    blocks[1].append(blocks[2].querySelector(".footnote-ref"));
+    editor.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  });
+  await page.locator('[data-footnote-id="1"] .footnote-body').evaluate((body) => {
+    body.append(document.createTextNode(" ותוספת חדשה"));
+    body.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  });
+
+  await expect(page.locator("#saveState")).toHaveText("נשמר אוטומטית בקובץ המקורי", { timeout: 5000 });
+  const savedBytes = await page.evaluate(async () => Array.from(new Uint8Array(await window.__autoSaveWrites.at(-1).arrayBuffer())));
+  const zip = await JSZip.loadAsync(Buffer.from(savedBytes));
+  const documentXml = await zip.file("word/document.xml").async("text");
+  const footnotesXml = await zip.file("word/footnotes.xml").async("text");
+  expect(documentXml).toContain("גוף שנשמר אוטומטית");
+  expect(documentXml.indexOf("footnoteReference")).toBeLessThan(documentXml.indexOf("פסקה שנייה"));
+  expect(footnotesXml).toContain("ותוספת חדשה");
+});
