@@ -134,13 +134,18 @@ test("autosave persists body, footnote text and reference position", async ({ pa
   await page.addInitScript(({ base64 }) => {
     const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
     window.__autoSaveWrites = [];
+    window.__autoSaveAttempts = 0;
     const file = new File([bytes], "autosave.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
     window.showOpenFilePicker = async () => [{
       getFile: async () => file,
-      createWritable: async () => ({
-        write: async (blob) => window.__autoSaveWrites.push(blob),
-        close: async () => {},
-      }),
+      createWritable: async () => {
+        window.__autoSaveAttempts += 1;
+        if (window.__autoSaveAttempts === 1) throw new DOMException("changed on disk", "InvalidStateError");
+        return {
+          write: async (blob) => window.__autoSaveWrites.push(blob),
+          close: async () => {},
+        };
+      },
     }];
   }, { base64 });
 
@@ -169,6 +174,39 @@ test("autosave persists body, footnote text and reference position", async ({ pa
   expect(documentXml).toContain("גוף שנשמר אוטומטית");
   expect(documentXml.indexOf("footnoteReference")).toBeLessThan(documentXml.indexOf("פסקה שנייה"));
   expect(footnotesXml).toContain("ותוספת חדשה");
+  expect(await page.locator("#autoSaveButton").getAttribute("aria-pressed")).toBe("true");
+});
+
+test("controlled footnote drag moves only the reference and preserves text", async ({ page }) => {
+  const fixture = await makeDocxFixture();
+  await page.goto("/");
+  await page.locator("#fileInput").setInputFiles({ name: "controlled-drag.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: fixture });
+  await expect(page.locator("#editor")).toContainText("פסקה ראשונה");
+  const before = await page.locator("#editor").evaluate((editor) => {
+    const copy = editor.cloneNode(true);
+    copy.querySelectorAll(".footnote-ref").forEach((node) => node.remove());
+    return copy.innerText;
+  });
+  await page.locator("#editor").evaluate((editor) => {
+    const ref = editor.querySelector(".footnote-ref");
+    const target = editor.children[1].querySelector(".docx-run");
+    const data = new DataTransfer();
+    ref.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: data }));
+    const box = target.getBoundingClientRect();
+    editor.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data, clientX: box.left + 2, clientY: box.top + box.height / 2 }));
+  });
+  const after = await page.locator("#editor").evaluate((editor) => {
+    const copy = editor.cloneNode(true);
+    copy.querySelectorAll(".footnote-ref").forEach((node) => node.remove());
+    return copy.innerText;
+  });
+  expect(after.replace(/\s+/g, " ")).toBe(before.replace(/\s+/g, " "));
+  await expect(page.locator("#editor").locator(".footnote-ref")).toHaveCount(1);
+  const pending = page.waitForEvent("download");
+  await page.locator("#saveButton").click();
+  const output = await require("node:fs/promises").readFile(await (await pending).path());
+  const zip = await JSZip.loadAsync(output);
+  expect(await zip.file("word/document.xml").async("text")).toContain("פסקה ראשונה");
 });
 
 test("drag-style paragraph duplication is normalized instead of blocking save", async ({ page }) => {

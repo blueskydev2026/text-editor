@@ -20,6 +20,8 @@
   openedFileHandle: null,
   autoSaveTimer: null,
   isAutoSaving: false,
+  autoSavePending: false,
+  draggingFootnoteId: null,
   activeFootnoteId: null,
   isResizingFootnotes: false,
   isDraggingDocumentPosition: false,
@@ -119,6 +121,8 @@ function resetDocxState() {
   state.openedFileHandle = null;
   state.autoSaveTimer = null;
   state.isAutoSaving = false;
+  state.autoSavePending = false;
+  state.draggingFootnoteId = null;
   state.activeFootnoteId = null;
   state.isResizingFootnotes = false;
   state.isDraggingDocumentPosition = false;
@@ -541,6 +545,7 @@ function createFootnoteRefElement(id) {
   const ref = document.createElement("sup");
   ref.className = "footnote-ref";
   ref.contentEditable = "false";
+  ref.draggable = true;
   ref.dataset.footnoteRef = id;
   ref.textContent = id;
   return ref;
@@ -762,7 +767,7 @@ function renderRun(run) {
     if (child.localName === "br") chunks.push("<br>");
     if (child.localName === "footnoteReference") {
       const id = attr(child, "id");
-      chunks.push(`<sup class="footnote-ref" contenteditable="false" data-footnote-ref="${escapeHtml(id)}">${escapeHtml(id)}</sup>`);
+      chunks.push(`<sup class="footnote-ref" contenteditable="false" draggable="true" data-footnote-ref="${escapeHtml(id)}">${escapeHtml(id)}</sup>`);
     }
   });
   return chunks.join("");
@@ -1492,15 +1497,30 @@ async function saveDocx() {
 }
 
 async function writeAutoSave() {
-  if (!state.autoSaveEnabled || !state.openedFileHandle || state.isAutoSaving) return;
+  if (!state.autoSaveEnabled || !state.openedFileHandle) return;
+  if (state.isAutoSaving) {
+    state.autoSavePending = true;
+    return;
+  }
 
   state.isAutoSaving = true;
+  state.autoSavePending = false;
   try {
     setStatus("שומר אוטומטית...", "busy");
     const blob = await createDocxBlob();
-    const writable = await state.openedFileHandle.createWritable();
-    await writable.write(blob);
-    await writable.close();
+    let saved = false;
+    for (let attempt = 0; attempt < 3 && !saved; attempt += 1) {
+      try {
+        await state.openedFileHandle.getFile();
+        const writable = await state.openedFileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        saved = true;
+      } catch (error) {
+        if (error.name !== "InvalidStateError" || attempt === 2) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+      }
+    }
     setStatus("נשמר אוטומטית בקובץ המקורי", "ready");
   } catch (error) {
     console.error(error);
@@ -1511,11 +1531,17 @@ async function writeAutoSave() {
     setStatus("השמירה האוטומטית נכשלה וכובתה", "error");
   } finally {
     state.isAutoSaving = false;
+    if (state.autoSaveEnabled && state.autoSavePending) {
+      state.autoSavePending = false;
+      clearTimeout(state.autoSaveTimer);
+      state.autoSaveTimer = setTimeout(writeAutoSave, 250);
+    }
   }
 }
 
 function scheduleAutoSave() {
   if (!state.autoSaveEnabled) return;
+  if (state.isAutoSaving) state.autoSavePending = true;
   clearTimeout(state.autoSaveTimer);
   state.autoSaveTimer = setTimeout(() => {
     writeAutoSave();
@@ -2344,6 +2370,43 @@ els.toggleFootnotesButton.addEventListener("click", () => {
 });
 
 els.editor.addEventListener("input", markDocumentDirty);
+els.editor.addEventListener("dragstart", (event) => {
+  const ref = event.target.closest?.(".footnote-ref[data-footnote-ref]");
+  if (!ref) return;
+  state.draggingFootnoteId = ref.dataset.footnoteRef;
+  event.dataTransfer?.setData("text/x-footnote-id", state.draggingFootnoteId);
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+});
+els.editor.addEventListener("dragover", (event) => {
+  if (!state.draggingFootnoteId && !event.dataTransfer?.types.includes("text/x-footnote-id")) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+});
+els.editor.addEventListener("drop", (event) => {
+  const id = state.draggingFootnoteId || event.dataTransfer?.getData("text/x-footnote-id");
+  state.draggingFootnoteId = null;
+  if (!id) return;
+  event.preventDefault();
+
+  const range = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+  const targetNode = range?.startContainer?.nodeType === Node.TEXT_NODE ? range.startContainer.parentElement : range?.startContainer;
+  const targetBlock = targetNode?.closest?.(".docx-paragraph, p, h1, h2, h3");
+  if (!targetBlock || !els.editor.contains(targetBlock)) return;
+  const targetRun = targetNode.closest?.(".docx-run[data-text-id]");
+  els.editor.querySelectorAll(`.footnote-ref[data-footnote-ref="${CSS.escape(id)}"]`).forEach((ref) => ref.remove());
+  const movedRef = createFootnoteRefElement(id);
+  if (targetRun) {
+    const textLength = targetRun.textContent.length;
+    const placeAfter = range?.startOffset >= textLength / 2;
+    targetRun[placeAfter ? "after" : "before"](movedRef);
+  } else {
+    targetBlock.append(movedRef);
+  }
+  markDocumentDirty();
+});
+els.editor.addEventListener("dragend", () => {
+  state.draggingFootnoteId = null;
+});
 els.editor.addEventListener("paste", (event) => {
   const html = event.clipboardData?.getData("text/html") || "";
   if (!html || !/mso-|MsoFootnote|MsoEndnote/i.test(html)) return;
