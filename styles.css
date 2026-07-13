@@ -561,7 +561,10 @@ p {
   font-weight: 700;
   line-height: 0;
   vertical-align: super;
+  cursor: grab;
 }
+
+.footnote-ref:active { cursor: grabbing; }
 
 .footnote-ref.active {
   color: var(--accent);
