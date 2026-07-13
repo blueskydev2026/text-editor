@@ -1055,27 +1055,109 @@ function updateXmlFromEditor() {
   ensureFootnoteStylesForWord();
 }
 
-function assertEditorStructureIsSafeToSave() {
-  if (!state.isDocx) return;
-
-  const blocks = Array.from(els.editor.children).filter((node) =>
-    node.matches?.(".docx-paragraph, p, h1, h2, h3")
+function editorParagraphBlocks() {
+  return Array.from(els.editor.children).filter((node) =>
+    node.matches?.(".docx-paragraph, p, h1, h2, h3, div")
   );
-  const mappedIndexes = blocks
-    .map((block) => block.dataset.paragraphIndex)
-    .filter((value) => value !== undefined && value !== "");
-  const uniqueIndexes = new Set(mappedIndexes);
+}
 
-  if (
-    blocks.length !== state.paragraphNodes.length ||
-    mappedIndexes.length !== state.paragraphNodes.length ||
-    uniqueIndexes.size !== state.paragraphNodes.length
-  ) {
-    throw new Error(
-      "מבנה הפסקאות השתנה. כדי למנוע פגיעה בקובץ Word, השמירה נעצרה. " +
-      "אפשר לבטל את הוספת או מחיקת הפסקאות, או להוריד בינתיים קובץ טקסט."
-    );
+function paragraphAncestor(node) {
+  let current = node;
+  while (current && current !== state.documentXml) {
+    if (current.localName === "p") return current;
+    current = current.parentNode;
   }
+  return null;
+}
+
+function replaceWordParagraphText(paragraph, text) {
+  Array.from(paragraph.childNodes).forEach((child) => {
+    if (child.localName !== "pPr") child.remove();
+  });
+  const run = createWordElement("r", paragraph.ownerDocument);
+  setRunRtl(run, true);
+  const textNode = createWordElement("t", paragraph.ownerDocument);
+  textNode.textContent = text;
+  setTextSpacePreserve(textNode, text);
+  run.append(textNode);
+  paragraph.append(run);
+}
+
+function createWordParagraphFromBlock(block, parent) {
+  const doc = parent.ownerDocument || state.documentXml;
+  const paragraph = createWordElement("p", doc);
+  setParagraphRtl(paragraph, true);
+  setParagraphAlignment(paragraph, paragraphAlignmentFromBlock(block));
+  const format = formatFromBlock(block);
+  if (format !== "p") setParagraphWordStyle(paragraph, format);
+  replaceWordParagraphText(paragraph, block.innerText.replace(/\n+/g, " "));
+  return paragraph;
+}
+
+function syncParagraphStructureFromEditor() {
+  if (!state.isDocx || !state.documentXml) return;
+
+  const blocks = editorParagraphBlocks();
+  const originalParagraphs = [...state.paragraphNodes];
+  const mappedBlocks = blocks.filter((block) => block.dataset.paragraphIndex !== undefined);
+  const mappedParagraphs = mappedBlocks.map((block) => originalParagraphs[Number(block.dataset.paragraphIndex)]);
+
+  if (mappedParagraphs.some((paragraph) => !paragraph)) {
+    throw new Error("מיפוי הפסקאות השתבש. יש לפתוח מחדש את המסמך לפני השמירה.");
+  }
+  if (new Set(mappedParagraphs).size !== mappedParagraphs.length) {
+    throw new Error("נמצאה פסקה כפולה. יש לפתוח מחדש את המסמך לפני השמירה.");
+  }
+
+  const mappedOriginalOrder = mappedParagraphs.map((paragraph) => originalParagraphs.indexOf(paragraph));
+  if (mappedOriginalOrder.some((value, index) => index && value < mappedOriginalOrder[index - 1])) {
+    throw new Error("שינוי סדר פסקאות עדיין אינו נתמך, ולכן השמירה נעצרה.");
+  }
+
+  originalParagraphs.forEach((paragraph) => {
+    if (!mappedParagraphs.includes(paragraph)) paragraph.remove();
+  });
+
+  mappedBlocks.forEach((block) => {
+    const paragraph = originalParagraphs[Number(block.dataset.paragraphIndex)];
+    const foreignRun = Array.from(block.querySelectorAll("[data-text-id]")).some((span) => {
+      const xmlText = state.textNodes.get(span.dataset.textId);
+      return xmlText && paragraphAncestor(xmlText) !== paragraph;
+    });
+    if (foreignRun) replaceWordParagraphText(paragraph, block.innerText.replace(/\n+/g, " "));
+  });
+
+  blocks.forEach((block, blockIndex) => {
+    if (block.dataset.paragraphIndex !== undefined) return;
+
+    const previousBlock = blocks.slice(0, blockIndex).reverse().find((item) => item.dataset.paragraphIndex !== undefined);
+    const nextBlock = blocks.slice(blockIndex + 1).find((item) => item.dataset.paragraphIndex !== undefined);
+    const previousParagraph = previousBlock ? originalParagraphs[Number(previousBlock.dataset.paragraphIndex)] : null;
+    const nextParagraph = nextBlock ? originalParagraphs[Number(nextBlock.dataset.paragraphIndex)] : null;
+    const parent = previousParagraph?.parentNode || nextParagraph?.parentNode;
+    if (!parent) throw new Error("לא נמצא מקום בטוח להוספת הפסקה החדשה.");
+    if (previousParagraph && nextParagraph && previousParagraph.parentNode !== nextParagraph.parentNode) {
+      throw new Error("לא ניתן להוסיף פסקה בגבול שבין שני מבנים שונים במסמך Word.");
+    }
+
+    const paragraph = createWordParagraphFromBlock(block, parent);
+    if (nextParagraph?.parentNode === parent) parent.insertBefore(paragraph, nextParagraph);
+    else parent.insertBefore(paragraph, previousParagraph?.nextSibling || null);
+    originalParagraphs.push(paragraph);
+    block.dataset.newParagraph = "true";
+    block._wordParagraph = paragraph;
+  });
+
+  const body = qName(state.documentXml, "body")[0];
+  state.paragraphNodes = Array.from(qName(body, "p"));
+  blocks.forEach((block) => {
+    const paragraph = block._wordParagraph || originalParagraphs[Number(block.dataset.paragraphIndex)];
+    const newIndex = state.paragraphNodes.indexOf(paragraph);
+    if (newIndex < 0) throw new Error("לא ניתן היה להשלים את מיפוי הפסקה החדשה.");
+    block.dataset.paragraphIndex = String(newIndex);
+    block.classList.add("docx-paragraph");
+    delete block._wordParagraph;
+  });
 }
 
 function assertXmlIsReadable(xmlText, partName) {
@@ -1214,8 +1296,8 @@ function exportTextFile() {
 async function createDocxBlob() {
   if (!state.zip || !state.documentXml) return;
 
-  assertEditorStructureIsSafeToSave();
   updateXmlFromEditor();
+  syncParagraphStructureFromEditor();
   await ensureDocxFootnotePackageParts();
   state.zip.file("word/document.xml", serializer.serializeToString(state.documentXml));
   if (state.footnotesXml) {
