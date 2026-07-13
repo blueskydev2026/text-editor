@@ -197,39 +197,12 @@ p {
 .top-tools {
   flex: 1 0 100%;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: stretch;
   padding-top: 6px;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
+  overflow: visible;
   border-top: 1px solid rgba(217, 223, 214, 0.72);
-  scrollbar-width: thin;
-}
-
-.drawer-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 35;
-  background: rgba(26, 34, 30, 0.24);
-}
-
-.drawer-backdrop[hidden] {
-  display: none;
-}
-
-.drawer-head {
-  display: none;
-}
-
-.icon-button {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  min-height: 40px;
-  padding: 0;
-  font-size: 1.45rem;
-  line-height: 1;
 }
 
 .tool-section {
@@ -243,6 +216,10 @@ p {
   border-radius: 8px;
   padding: 3px;
   box-shadow: none;
+}
+
+.tool-section-menu {
+  position: relative;
 }
 
 .tool-section h2 {
@@ -263,8 +240,76 @@ p {
   margin-bottom: 0;
 }
 
+.tool-menu {
+  position: relative;
+}
+
+.tool-menu summary {
+  list-style: none;
+}
+
+.tool-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.menu-button::after {
+  content: "";
+  width: 0;
+  height: 0;
+  margin-inline-start: 6px;
+  border-inline: 4px solid transparent;
+  border-top: 5px solid var(--muted);
+}
+
+.tool-menu[open] .menu-button,
+.menu-button:hover {
+  background: var(--panel);
+  border-color: var(--line);
+}
+
+.tool-popover {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 70;
+  display: grid;
+  gap: 8px;
+  min-width: min(280px, calc(100vw - 24px));
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.zoom-popover {
+  min-width: min(300px, calc(100vw - 24px));
+}
+
 .zoom-mode {
   margin: 0;
+}
+
+.tool-popover .zoom-mode {
+  width: 100%;
+}
+
+.tool-popover .zoom-mode .segment {
+  flex: 1 1 0;
 }
 
 .segment {
@@ -302,6 +347,11 @@ p {
   accent-color: var(--accent);
 }
 
+.tool-popover .zoom-control {
+  grid-template-columns: auto 1fr auto;
+  width: 100%;
+}
+
 .footnote-zoom-control {
   margin-top: 0;
 }
@@ -333,25 +383,24 @@ p {
 }
 
 .heading-nav {
-  display: flex;
-  gap: 3px;
-  max-width: 260px;
-  overflow-x: auto;
+  display: grid;
+  gap: 5px;
+  max-width: none;
+  max-height: 280px;
+  overflow: auto;
   margin-top: 0;
   padding-inline-start: 0;
 }
 
 .heading-nav-item {
-  flex: 0 0 auto;
   min-height: 28px;
-  max-width: 140px;
-  width: auto;
+  max-width: none;
+  width: 100%;
   padding: 0 8px;
   border-radius: 8px;
   text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
   font-size: 0.78rem;
 }
 

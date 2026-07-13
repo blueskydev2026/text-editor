@@ -28,10 +28,6 @@
 };
 
 const els = {
-  toolsToggleButton: document.querySelector("#toolsToggleButton"),
-  closeToolsButton: document.querySelector("#closeToolsButton"),
-  toolsDrawer: document.querySelector("#toolsDrawer"),
-  drawerBackdrop: document.querySelector("#drawerBackdrop"),
   openFileButton: document.querySelector("#openFileButton"),
   fileInput: document.querySelector("#fileInput"),
   newDocButton: document.querySelector("#newDocButton"),
@@ -1619,16 +1615,10 @@ function setZoomMode(mode) {
   }
 }
 
-function setToolsDrawerOpen(isOpen) {
-  if (!els.toolsDrawer) return;
-  els.toolsDrawer.classList.toggle("open", isOpen);
-  els.toolsDrawer.setAttribute("aria-hidden", "false");
-  if (els.toolsToggleButton) {
-    els.toolsToggleButton.setAttribute("aria-expanded", String(isOpen));
-  }
-  if (els.drawerBackdrop) {
-    els.drawerBackdrop.hidden = true;
-  }
+function closeToolMenus(exceptMenu = null) {
+  document.querySelectorAll(".tool-menu[open]").forEach((menu) => {
+    if (menu !== exceptMenu) menu.removeAttribute("open");
+  });
 }
 
 function headingTitle(heading) {
@@ -1796,23 +1786,12 @@ els.fileInput.addEventListener("change", async (event) => {
   }
 });
 
-if (els.toolsToggleButton) {
-  els.toolsToggleButton.addEventListener("click", () => {
-    setToolsDrawerOpen(!els.toolsDrawer.classList.contains("open"));
+document.querySelectorAll(".tool-menu").forEach((menu) => {
+  menu.addEventListener("toggle", () => {
+    if (!menu.open) return;
+    closeToolMenus(menu);
   });
-}
-
-if (els.closeToolsButton) {
-  els.closeToolsButton.addEventListener("click", () => {
-    setToolsDrawerOpen(false);
-  });
-}
-
-if (els.drawerBackdrop) {
-  els.drawerBackdrop.addEventListener("click", () => {
-    setToolsDrawerOpen(false);
-  });
-}
+});
 
 document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "b" && state.isDocx) {
@@ -1830,7 +1809,7 @@ document.addEventListener("keydown", (event) => {
   }
 
   if (event.key === "Escape") {
-    setToolsDrawerOpen(false);
+    closeToolMenus();
     hideEditorContextMenu();
   }
 });
@@ -1838,6 +1817,9 @@ document.addEventListener("keydown", (event) => {
 document.addEventListener("selectionchange", saveEditorSelection);
 document.addEventListener("click", (event) => {
   if (!event.target.closest("#editorContextMenu")) hideEditorContextMenu();
+  if (!event.target.closest(".tool-menu")) {
+    closeToolMenus();
+  }
 });
 
 els.newDocButton.addEventListener("click", newDocument);
@@ -1913,7 +1895,7 @@ els.headingNav.addEventListener("click", (event) => {
   const button = event.target.closest(".heading-nav-item");
   if (!button) return;
   scrollToHeading(button.dataset.navIndex);
-  setToolsDrawerOpen(false);
+  button.closest(".tool-menu")?.removeAttribute("open");
 });
 
 els.documentPositionInput.addEventListener("pointerdown", () => {

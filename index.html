@@ -35,21 +35,22 @@
         <button id="autoSaveButton" class="button" type="button" disabled aria-pressed="false">שמירה אוטומטית</button>
         <button id="installAppButton" class="button install-button" type="button" hidden>התקנה כאפליקציה</button>
       </div>
-      <aside id="toolsDrawer" class="top-tools" aria-label="כלי עריכה" aria-hidden="false">
-        <div class="drawer-head">
-          <strong>כלים וניווט</strong>
-          <button id="closeToolsButton" class="icon-button" type="button" aria-label="סגור">×</button>
-        </div>
-        <section class="tool-section">
+      <aside id="topTools" class="top-tools" aria-label="כלי עריכה" aria-hidden="false">
+        <section class="tool-section tool-section-menu">
           <h2>ניווט</h2>
-          <label class="zoom-control">
-            <span>מיקום</span>
-            <input id="documentPositionInput" type="range" min="0" max="100" value="0" step="1">
-            <output id="documentPositionOutput">0%</output>
-          </label>
-          <div id="headingNav" class="heading-nav" aria-label="ניווט לפי כותרות">
-            <p class="nav-empty">אין כותרות במסמך</p>
-          </div>
+          <details class="tool-menu">
+            <summary class="menu-button">ניווט</summary>
+            <div class="tool-popover nav-popover">
+              <label class="zoom-control">
+                <span>מיקום</span>
+                <input id="documentPositionInput" type="range" min="0" max="100" value="0" step="1">
+                <output id="documentPositionOutput">0%</output>
+              </label>
+              <div id="headingNav" class="heading-nav" aria-label="ניווט לפי כותרות">
+                <p class="nav-empty">אין כותרות במסמך</p>
+              </div>
+            </div>
+          </details>
         </section>
         <section class="tool-section">
           <h2>תצוגה</h2>
@@ -58,20 +59,25 @@
             <button class="segment" type="button" data-width="wide">רחב</button>
             <button class="segment" type="button" data-width="focus">ממוקד</button>
           </div>
-          <label class="zoom-control">
-            <span>זום טקסט</span>
-            <input id="zoomInput" type="range" min="85" max="180" value="112" step="5">
-            <output id="zoomOutput">112%</output>
-          </label>
-          <div class="segmented zoom-mode" role="group" aria-label="מצב זום">
-            <button class="segment active" type="button" data-zoom-mode="shared">משותף</button>
-            <button class="segment" type="button" data-zoom-mode="separate">נפרד</button>
-          </div>
-          <label id="footnoteZoomControl" class="zoom-control footnote-zoom-control" hidden>
-            <span>זום הערות</span>
-            <input id="footnoteZoomInput" type="range" min="75" max="180" value="100" step="5">
-            <output id="footnoteZoomOutput">100%</output>
-          </label>
+          <details class="tool-menu">
+            <summary class="menu-button">זום</summary>
+            <div class="tool-popover zoom-popover">
+              <label class="zoom-control">
+                <span>זום טקסט</span>
+                <input id="zoomInput" type="range" min="85" max="180" value="112" step="5">
+                <output id="zoomOutput">112%</output>
+              </label>
+              <div class="segmented zoom-mode" role="group" aria-label="מצב זום">
+                <button class="segment active" type="button" data-zoom-mode="shared">משותף</button>
+                <button class="segment" type="button" data-zoom-mode="separate">נפרד</button>
+              </div>
+              <label id="footnoteZoomControl" class="zoom-control footnote-zoom-control" hidden>
+                <span>זום הערות</span>
+                <input id="footnoteZoomInput" type="range" min="75" max="180" value="100" step="5">
+                <output id="footnoteZoomOutput">100%</output>
+              </label>
+            </div>
+          </details>
         </section>
 
         <section class="tool-section">
@@ -104,8 +110,6 @@
     </header>
 
     <main class="workspace">
-      <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
-
       <section class="editor-shell split" id="editorShell">
         <div class="editor-topline">
           <div>
