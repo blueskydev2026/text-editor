@@ -1120,11 +1120,14 @@ function syncParagraphStructureFromEditor() {
 
   mappedBlocks.forEach((block) => {
     const paragraph = originalParagraphs[Number(block.dataset.paragraphIndex)];
-    const foreignRun = Array.from(block.querySelectorAll("[data-text-id]")).some((span) => {
+    const trackedRuns = Array.from(block.querySelectorAll("[data-text-id]"));
+    const foreignRun = trackedRuns.some((span) => {
       const xmlText = state.textNodes.get(span.dataset.textId);
       return xmlText && paragraphAncestor(xmlText) !== paragraph;
     });
-    if (foreignRun) replaceWordParagraphText(paragraph, block.innerText.replace(/\n+/g, " "));
+    if (!trackedRuns.length || foreignRun) {
+      replaceWordParagraphText(paragraph, block.innerText.replace(/\n+/g, " "));
+    }
   });
 
   blocks.forEach((block, blockIndex) => {
