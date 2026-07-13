@@ -899,13 +899,18 @@ function syncFootnotesFromEditor() {
     if (!note) return;
 
     const body = card.querySelector(".footnote-body");
-    const hasTrackedText = body?.querySelector("[data-footnote-text-id]");
-    if (hasTrackedText) return;
-
     const textNodes = Array.from(qName(note, "t"));
     if (!textNodes.length) return;
 
-    textNodes[0].textContent = visibleFootnoteText(card);
+    const visibleText = visibleFootnoteText(card);
+    const trackedText = Array.from(body?.querySelectorAll("[data-footnote-text-id]") || [])
+      .map((node) => node.textContent)
+      .join("")
+      .trim();
+    if (trackedText === visibleText) return;
+
+    textNodes[0].textContent = visibleText;
+    setTextSpacePreserve(textNodes[0], visibleText);
     textNodes.slice(1).forEach((node) => {
       node.textContent = "";
     });
