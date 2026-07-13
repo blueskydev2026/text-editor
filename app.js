@@ -129,18 +129,18 @@ function resetDocxState() {
   state.savedEditorRange = null;
   els.documentPositionInput.value = "0";
   els.documentPositionOutput.textContent = "0%";
-  els.headingNav.innerHTML = `<p class="nav-empty">׳׳™׳ ׳›׳•׳×׳¨׳•׳× ׳‘׳׳¡׳׳</p>`;
+  els.headingNav.innerHTML = `<p class="nav-empty">אין כותרות במסמך</p>`;
   els.footnotesList.innerHTML = "";
-  els.activeFootnoteLabel.textContent = "׳׳™׳ ׳”׳¢׳¨׳•׳× ׳‘׳׳¡׳׳";
+  els.activeFootnoteLabel.textContent = "אין הערות במסמך";
   els.footnotesPane.hidden = false;
   els.toggleFootnotesButton.classList.add("active");
   els.toggleFootnotesButton.setAttribute("aria-pressed", "true");
-  els.toggleFootnotesButton.textContent = "׳”׳¡׳×׳¨ ׳—׳׳•׳ ׳™׳×";
+  els.toggleFootnotesButton.textContent = "הסתר חלונית";
   if (els.autoSaveButton) {
     els.autoSaveButton.disabled = true;
     els.autoSaveButton.classList.remove("active");
     els.autoSaveButton.setAttribute("aria-pressed", "false");
-    els.autoSaveButton.textContent = "׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳×";
+    els.autoSaveButton.textContent = "שמירה אוטומטית";
   }
 }
 
@@ -148,7 +148,7 @@ function parseXml(xmlText) {
   const xml = parser.parseFromString(xmlText, "application/xml");
   const error = xml.querySelector("parsererror");
   if (error) {
-    throw new Error("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳§׳¨׳•׳ ׳׳× ׳׳‘׳ ׳” ׳”ײ¾XML ׳©׳ ׳”׳׳¡׳׳.");
+    throw new Error("לא הצלחתי לקרוא את מבנה ה־XML של המסמך.");
   }
   return xml;
 }
@@ -224,9 +224,9 @@ function headingTagFromStyle(styleId, styleName, outlineLevel) {
   const combined = `${styleId || ""} ${styleName || ""}`;
   const compact = normalizeStyleText(combined);
 
-  if (outlineLevel === "0" || /heading1|headline1/i.test(combined) || compact.includes("׳›׳•׳×׳¨׳×1") || compact.includes("׳›׳•׳×׳¨׳×׳") || compact.includes("title")) return "h1";
-  if (outlineLevel === "1" || /heading2/i.test(combined) || compact.includes("׳›׳•׳×׳¨׳×2") || compact.includes("׳›׳•׳×׳¨׳×׳‘")) return "h2";
-  if (outlineLevel === "2" || /heading3/i.test(combined) || compact.includes("׳›׳•׳×׳¨׳×3") || compact.includes("׳›׳•׳×׳¨׳×׳’")) return "h3";
+  if (outlineLevel === "0" || /heading1|headline1/i.test(combined) || compact.includes("כותרת1") || compact.includes("כותרתא") || compact.includes("title")) return "h1";
+  if (outlineLevel === "1" || /heading2/i.test(combined) || compact.includes("כותרת2") || compact.includes("כותרתב")) return "h2";
+  if (outlineLevel === "2" || /heading3/i.test(combined) || compact.includes("כותרת3") || compact.includes("כותרתג")) return "h3";
   return "p";
 }
 
@@ -258,9 +258,9 @@ function buildParagraphStyleMap() {
     if (tag === "h2" && !state.headingStyleIds.h2) state.headingStyleIds.h2 = styleId;
     if (tag === "h3" && !state.headingStyleIds.h3) state.headingStyleIds.h3 = styleId;
 
-    if (tag === "h1" && /heading1|׳›׳•׳×׳¨׳×\s*1/i.test(`${styleId} ${name}`)) state.headingStyleIds.h1 = styleId;
-    if (tag === "h2" && /heading2|׳›׳•׳×׳¨׳×\s*2/i.test(`${styleId} ${name}`)) state.headingStyleIds.h2 = styleId;
-    if (tag === "h3" && /heading3|׳›׳•׳×׳¨׳×\s*3/i.test(`${styleId} ${name}`)) state.headingStyleIds.h3 = styleId;
+    if (tag === "h1" && /heading1|כותרת\s*1/i.test(`${styleId} ${name}`)) state.headingStyleIds.h1 = styleId;
+    if (tag === "h2" && /heading2|כותרת\s*2/i.test(`${styleId} ${name}`)) state.headingStyleIds.h2 = styleId;
+    if (tag === "h3" && /heading3|כותרת\s*3/i.test(`${styleId} ${name}`)) state.headingStyleIds.h3 = styleId;
   });
 }
 
@@ -318,8 +318,8 @@ function renderFootnoteCard(id) {
 
 function renderFootnotesPane() {
   if (!state.footnoteMap.size) {
-    els.footnotesList.innerHTML = `<p class="footnotes-empty">׳׳™׳ ׳”׳¢׳¨׳•׳× ׳©׳•׳׳™׳™׳ ׳‘׳׳¡׳׳ ׳”׳–׳”.</p>`;
-    els.activeFootnoteLabel.textContent = "׳׳™׳ ׳”׳¢׳¨׳•׳× ׳‘׳׳¡׳׳";
+    els.footnotesList.innerHTML = `<p class="footnotes-empty">אין הערות שוליים במסמך הזה.</p>`;
+    els.activeFootnoteLabel.textContent = "אין הערות במסמך";
     return;
   }
 
@@ -329,7 +329,7 @@ function renderFootnotesPane() {
     .join("");
 
   els.footnotesList.innerHTML = html;
-  els.activeFootnoteLabel.textContent = `${state.footnoteMap.size} ׳”׳¢׳¨׳•׳×`;
+  els.activeFootnoteLabel.textContent = `${state.footnoteMap.size} הערות`;
 }
 
 function createWordElement(name, doc = state.documentXml) {
@@ -661,7 +661,7 @@ function insertFootnote() {
   restoreEditorSelection();
   const selection = window.getSelection();
   if (!selection || !selection.rangeCount) {
-    setStatus("׳‘׳—׳¨ ׳׳§׳•׳ ׳‘׳׳¡׳׳ ׳׳”׳•׳¡׳₪׳× ׳”׳¢׳¨׳× ׳©׳•׳׳™׳™׳", "error");
+    setStatus("בחר מקום במסמך להוספת הערת שוליים", "error");
     return;
   }
 
@@ -670,12 +670,12 @@ function insertFootnote() {
     ? range.commonAncestorContainer
     : range.commonAncestorContainer.parentElement;
   if (!container || !els.editor.contains(container)) {
-    setStatus("׳׳₪׳©׳¨ ׳׳”׳•׳¡׳™׳£ ׳”׳¢׳¨׳” ׳¨׳§ ׳׳×׳•׳ ׳׳–׳•׳¨ ׳”׳¢׳¨׳™׳›׳”", "error");
+    setStatus("אפשר להוסיף הערה רק מתוך אזור העריכה", "error");
     return;
   }
 
   const id = nextFootnoteId();
-  const defaultText = "׳”׳¢׳¨׳” ׳—׳“׳©׳”";
+  const defaultText = "הערה חדשה";
   let insertedReference = false;
 
   if (state.isDocx && state.documentXml) {
@@ -695,7 +695,7 @@ function insertFootnote() {
 
   if (!insertedReference) {
     state.footnoteMap.delete(id);
-    setStatus("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳׳¦׳•׳ ׳₪׳¡׳§׳” ׳׳”׳•׳¡׳₪׳× ׳”׳”׳¢׳¨׳”", "error");
+    setStatus("לא הצלחתי למצוא פסקה להוספת ההערה", "error");
     return;
   }
 
@@ -703,11 +703,11 @@ function insertFootnote() {
   els.footnotesPane.hidden = false;
   els.toggleFootnotesButton.classList.add("active");
   els.toggleFootnotesButton.setAttribute("aria-pressed", "true");
-  els.toggleFootnotesButton.textContent = "׳”׳¡׳×׳¨ ׳—׳׳•׳ ׳™׳×";
+  els.toggleFootnotesButton.textContent = "הסתר חלונית";
   setActiveFootnote(id);
   focusFootnoteBody(id);
   markDocumentDirty();
-  setStatus("׳”׳¢׳¨׳× ׳©׳•׳׳™׳™׳ ׳ ׳•׳¡׳₪׳”", "dirty");
+  setStatus("הערת שוליים נוספה", "dirty");
 }
 
 function renderRun(run) {
@@ -751,11 +751,11 @@ function renderParagraph(paragraph, index) {
 
 async function openDocx(file, fileHandle = null) {
   if (!window.JSZip) {
-    throw new Error("׳¡׳₪׳¨׳™׳™׳× JSZip ׳¢׳“׳™׳™׳ ׳׳ ׳ ׳˜׳¢׳ ׳”. ׳‘׳“׳•׳§ ׳—׳™׳‘׳•׳¨ ׳׳™׳ ׳˜׳¨׳ ׳˜ ׳•׳¨׳¢׳ ׳ ׳׳× ׳”׳“׳£.");
+    throw new Error("ספריית JSZip עדיין לא נטענה. בדוק חיבור אינטרנט ורענן את הדף.");
   }
 
   resetDocxState();
-  setStatus("׳§׳•׳¨׳ ׳׳× ׳§׳•׳‘׳¥ Word...", "busy");
+  setStatus("קורא את קובץ Word...", "busy");
 
   const buffer = await file.arrayBuffer();
   state.zip = await JSZip.loadAsync(buffer);
@@ -764,7 +764,7 @@ async function openDocx(file, fileHandle = null) {
 
   const documentEntry = state.zip.file("word/document.xml");
   if (!documentEntry) {
-    throw new Error("׳–׳” ׳׳ ׳ ׳¨׳׳” ׳›׳׳• ׳§׳•׳‘׳¥ DOCX ׳×׳§׳™׳.");
+    throw new Error("זה לא נראה כמו קובץ DOCX תקין.");
   }
 
   state.documentXml = parseXml(await documentEntry.async("text"));
@@ -780,27 +780,26 @@ async function openDocx(file, fileHandle = null) {
   state.paragraphNodes = paragraphs;
   const html = paragraphs.map(renderParagraph).join("");
 
-  els.editor.innerHTML = html || `<p class="placeholder">׳”׳׳¡׳׳ ׳ ׳₪׳×׳—, ׳׳‘׳ ׳׳ ׳ ׳׳¦׳׳• ׳₪׳¡׳§׳׳•׳× ׳˜׳§׳¡׳˜ ׳׳¢׳¨׳™׳›׳”.</p>`;
+  els.editor.innerHTML = html || `<p class="placeholder">המסמך נפתח, אבל לא נמצאו פסקאות טקסט לעריכה.</p>`;
   renderFootnotesPane();
   buildHeadingNav();
   updateDocumentPositionSlider();
   updateDocumentStats();
   setTimeout(syncFootnoteToVisibleParagraph, 0);
   els.documentName.textContent = file.name;
-  els.documentMeta.textContent = `${paragraphs.length} ׳₪׳¡׳§׳׳•׳×, ${state.footnoteMap.size} ׳”׳¢׳¨׳•׳× ׳©׳•׳׳™׳™׳`;
+  els.documentMeta.textContent = `${paragraphs.length} פסקאות, ${state.footnoteMap.size} הערות שוליים`;
   els.saveButton.disabled = false;
   els.autoSaveButton.disabled = !state.openedFileHandle;
   state.isDocx = true;
-  setStatus(state.openedFileHandle ? "׳”׳׳¡׳׳ ׳₪׳×׳•׳— ׳׳¢׳¨׳™׳›׳” ׳¢׳ ׳”׳¨׳©׳׳× ׳©׳׳™׳¨׳”" : "׳”׳׳¡׳׳ ׳₪׳×׳•׳— ׳׳¢׳¨׳™׳›׳” ׳׳׳ ׳”׳¨׳©׳׳× ׳©׳׳™׳¨׳” ׳׳§׳•׳‘׳¥ ׳”׳׳§׳•׳¨׳™", "ready");
+  setStatus(state.openedFileHandle ? "המסמך פתוח לעריכה עם הרשאת שמירה" : "המסמך פתוח לעריכה ללא הרשאת שמירה לקובץ המקורי", "ready");
 }
 
 function setParagraphAlignment(paragraph, alignment) {
   if (!paragraph) return;
+  if (!alignment) return;
 
   const properties = ensureParagraphProperties(paragraph);
   removeWordChildren(properties, "jc");
-
-  if (!alignment) return;
 
   const doc = paragraph.ownerDocument || state.documentXml;
   const jc = doc.createElementNS(wordNs, "w:jc");
@@ -814,7 +813,7 @@ function paragraphAlignmentFromBlock(block) {
   if (value === "left") return "left";
   if (value === "right") return "right";
   if (value === "justify" || value === "start") return "both";
-  if (!value) return block.dataset.wordAlign || "";
+  if (!value) return block.dataset.wordAlign || "right";
   return "";
 }
 
@@ -839,6 +838,7 @@ function syncParagraphFormattingFromEditor() {
     if (format !== "p" || !block.dataset.wordStyleId) {
       setParagraphWordStyle(paragraph, format);
     }
+    setParagraphRtl(paragraph, true);
     setParagraphAlignment(paragraph, paragraphAlignmentFromBlock(block));
   });
 }
@@ -1076,7 +1076,7 @@ function updateDocumentStats() {
   const text = plainEditorText();
   const words = text ? text.split(/\s+/).filter(Boolean).length : 0;
   const chars = text.length;
-  els.documentStats.textContent = `${words} ׳׳™׳׳™׳ ֲ· ${chars} ׳×׳•׳•׳™׳`;
+  els.documentStats.textContent = `${words} מילים · ${chars} תווים`;
 }
 
 function saveLocalDraft() {
@@ -1110,11 +1110,11 @@ function restoreLocalDraft() {
       els.footnotesList.querySelectorAll(".footnote-card").forEach((card) => {
         state.footnoteMap.set(card.dataset.footnoteId, card.querySelector(".footnote-body")?.innerHTML || "");
       });
-      els.activeFootnoteLabel.textContent = state.footnoteMap.size ? `${state.footnoteMap.size} ׳”׳¢׳¨׳•׳×` : "׳׳™׳ ׳”׳¢׳¨׳•׳× ׳‘׳׳¡׳׳";
+      els.activeFootnoteLabel.textContent = state.footnoteMap.size ? `${state.footnoteMap.size} הערות` : "אין הערות במסמך";
     }
-    els.documentName.textContent = "׳˜׳™׳•׳˜׳” ׳׳§׳•׳׳™׳×";
-    els.documentMeta.textContent = "׳ ׳©׳׳¨׳× ׳׳•׳˜׳•׳׳˜׳™׳× ׳‘׳“׳₪׳“׳₪׳";
-    setStatus("׳˜׳™׳•׳˜׳” ׳׳§׳•׳׳™׳× ׳ ׳˜׳¢׳ ׳”", "ready");
+    els.documentName.textContent = "טיוטה מקומית";
+    els.documentMeta.textContent = "נשמרת אוטומטית בדפדפן";
+    setStatus("טיוטה מקומית נטענה", "ready");
     updateDocumentStats();
     buildHeadingNav();
     updateDocumentPositionSlider();
@@ -1128,17 +1128,17 @@ function restoreLocalDraft() {
 function exportTextFile() {
   const text = plainEditorText();
   if (!text) {
-    setStatus("׳׳™׳ ׳˜׳§׳¡׳˜ ׳׳”׳•׳¨׳“׳”", "error");
+    setStatus("אין טקסט להורדה", "error");
     return;
   }
 
-  const cleanName = (state.fileName || els.documentName.textContent || "׳׳¡׳׳")
+  const cleanName = (state.fileName || els.documentName.textContent || "מסמך")
     .replace(/\.docx$/i, "")
     .replace(/[\\/:*?"<>|]/g, "-")
-    .trim() || "׳׳¡׳׳";
+    .trim() || "מסמך";
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
   downloadBlob(blob, `${cleanName}.txt`);
-  setStatus("׳§׳•׳‘׳¥ ׳”׳˜׳§׳¡׳˜ ׳™׳¨׳“ ׳׳׳—׳©׳‘", "ready");
+  setStatus("קובץ הטקסט ירד למחשב", "ready");
 }
 
 async function createDocxBlob() {
@@ -1163,12 +1163,12 @@ async function createDocxBlob() {
 async function saveDocx() {
   if (!state.zip || !state.documentXml) return;
 
-  setStatus("׳©׳•׳׳¨ DOCX...", "busy");
+  setStatus("שומר DOCX...", "busy");
   const blob = await createDocxBlob();
 
   const cleanName = state.fileName.replace(/\.docx$/i, "");
   downloadBlob(blob, `${cleanName}-edited.docx`);
-  setStatus("׳”׳׳¡׳׳ ׳ ׳©׳׳¨ ׳›׳§׳•׳‘׳¥ ׳—׳“׳©", "ready");
+  setStatus("המסמך נשמר כקובץ חדש", "ready");
 }
 
 async function writeAutoSave() {
@@ -1176,19 +1176,19 @@ async function writeAutoSave() {
 
   state.isAutoSaving = true;
   try {
-    setStatus("׳©׳•׳׳¨ ׳׳•׳˜׳•׳׳˜׳™׳×...", "busy");
+    setStatus("שומר אוטומטית...", "busy");
     const blob = await createDocxBlob();
     const writable = await state.openedFileHandle.createWritable();
     await writable.write(blob);
     await writable.close();
-    setStatus("׳ ׳©׳׳¨ ׳׳•׳˜׳•׳׳˜׳™׳× ׳‘׳§׳•׳‘׳¥ ׳”׳׳§׳•׳¨׳™", "ready");
+    setStatus("נשמר אוטומטית בקובץ המקורי", "ready");
   } catch (error) {
     console.error(error);
     state.autoSaveEnabled = false;
     els.autoSaveButton.classList.remove("active");
     els.autoSaveButton.setAttribute("aria-pressed", "false");
-    els.autoSaveButton.textContent = "׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳×";
-    setStatus("׳”׳©׳׳™׳¨׳” ׳”׳׳•׳˜׳•׳׳˜׳™׳× ׳ ׳›׳©׳׳” ׳•׳›׳•׳‘׳×׳”", "error");
+    els.autoSaveButton.textContent = "שמירה אוטומטית";
+    setStatus("השמירה האוטומטית נכשלה וכובתה", "error");
   } finally {
     state.isAutoSaving = false;
   }
@@ -1204,7 +1204,7 @@ function scheduleAutoSave() {
 
 async function toggleAutoSave() {
   if (!state.isDocx) {
-    setStatus("׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳× ׳–׳׳™׳ ׳” ׳׳—׳¨׳™ ׳₪׳×׳™׳—׳× ׳§׳•׳‘׳¥ DOCX", "error");
+    setStatus("שמירה אוטומטית זמינה אחרי פתיחת קובץ DOCX", "error");
     return;
   }
 
@@ -1213,13 +1213,13 @@ async function toggleAutoSave() {
     state.autoSaveEnabled = false;
     els.autoSaveButton.classList.remove("active");
     els.autoSaveButton.setAttribute("aria-pressed", "false");
-    els.autoSaveButton.textContent = "׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳×";
-    setStatus("׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳× ׳›׳‘׳•׳™׳”", "ready");
+    els.autoSaveButton.textContent = "שמירה אוטומטית";
+    setStatus("שמירה אוטומטית כבויה", "ready");
     return;
   }
 
   if (!state.openedFileHandle) {
-    setStatus("׳›׳“׳™ ׳׳©׳׳•׳¨ ׳׳•׳˜׳•׳׳˜׳™׳× ׳׳§׳•׳‘׳¥ ׳”׳׳§׳•׳¨׳™, ׳₪׳×׳— ׳׳× ׳”׳§׳•׳‘׳¥ ׳“׳¨׳ ׳›׳₪׳×׳•׳¨ ׳₪׳×׳™׳—׳× Word ׳‘׳“׳₪׳“׳₪׳ Chrome ׳׳• Edge.", "error");
+    setStatus("כדי לשמור אוטומטית לקובץ המקורי, פתח את הקובץ דרך כפתור פתיחת Word בדפדפן Chrome או Edge.", "error");
     return;
   }
 
@@ -1227,13 +1227,13 @@ async function toggleAutoSave() {
     state.autoSaveEnabled = true;
     els.autoSaveButton.classList.add("active");
     els.autoSaveButton.setAttribute("aria-pressed", "true");
-    els.autoSaveButton.textContent = "׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳× ׳₪׳¢׳™׳׳”";
-    setStatus("׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳× ׳₪׳¢׳™׳׳” ׳׳§׳•׳‘׳¥ ׳”׳׳§׳•׳¨׳™", "ready");
+    els.autoSaveButton.textContent = "שמירה אוטומטית פעילה";
+    setStatus("שמירה אוטומטית פעילה לקובץ המקורי", "ready");
     await writeAutoSave();
   } catch (error) {
     if (error.name !== "AbortError") {
       console.error(error);
-      setStatus("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳”׳₪׳¢׳™׳ ׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳×", "error");
+      setStatus("לא הצלחתי להפעיל שמירה אוטומטית", "error");
     }
   }
 }
@@ -1242,18 +1242,18 @@ function newDocument() {
   resetDocxState();
   localStorage.removeItem(localDraftKey);
   els.editor.innerHTML = `
-    <h2>׳׳¡׳׳ ׳—׳“׳©</h2>
+    <h2>מסמך חדש</h2>
     <p></p>
   `;
-  els.footnotesList.innerHTML = `<p class="footnotes-empty">׳׳™׳ ׳”׳¢׳¨׳•׳× ׳©׳•׳׳™׳™׳ ׳‘׳׳¡׳׳ ׳”׳–׳”.</p>`;
-  els.activeFootnoteLabel.textContent = "׳׳™׳ ׳”׳¢׳¨׳•׳× ׳‘׳׳¡׳׳";
+  els.footnotesList.innerHTML = `<p class="footnotes-empty">אין הערות שוליים במסמך הזה.</p>`;
+  els.activeFootnoteLabel.textContent = "אין הערות במסמך";
   buildHeadingNav();
   updateDocumentPositionSlider();
-  els.documentName.textContent = "׳׳¡׳׳ ׳׳׳ ׳©׳";
-  els.documentMeta.textContent = "׳×׳¦׳•׳’׳” ׳–׳•׳¨׳׳×, ׳׳™׳׳™׳ ׳׳©׳׳׳";
+  els.documentName.textContent = "מסמך ללא שם";
+  els.documentMeta.textContent = "תצוגה זורמת, מימין לשמאל";
   els.saveButton.disabled = true;
   updateDocumentStats();
-  setStatus("׳׳¡׳׳ ׳—׳“׳© ׳׳•׳›׳ ׳׳¢׳¨׳™׳›׳”", "ready");
+  setStatus("מסמך חדש מוכן לעריכה", "ready");
 }
 
 function selectedDocxRuns() {
@@ -1531,7 +1531,7 @@ function setActiveFootnote(id, shouldScroll = true) {
   els.editor.querySelectorAll(".footnote-ref").forEach((ref) => {
     ref.classList.toggle("active", ref.dataset.footnoteRef === id);
   });
-  els.activeFootnoteLabel.textContent = `׳”׳¢׳¨׳” ${id}`;
+  els.activeFootnoteLabel.textContent = `הערה ${id}`;
 
   if (shouldScroll) {
     const card = els.footnotesList.querySelector(`[data-footnote-id="${CSS.escape(id)}"]`);
@@ -1578,7 +1578,7 @@ function markDocumentDirty() {
   updateDocumentPositionSlider();
   updateDocumentStats();
   saveLocalDraft();
-  setStatus(state.isDocx ? "׳™׳© ׳©׳™׳ ׳•׳™׳™׳ ׳©׳׳ ׳ ׳©׳׳¨׳•" : "׳ ׳¢׳¨׳", "dirty");
+  setStatus(state.isDocx ? "יש שינויים שלא נשמרו" : "נערך", "dirty");
   scheduleAutoSave();
 }
 
@@ -1627,7 +1627,7 @@ function setToolsDrawerOpen(isOpen) {
 }
 
 function headingTitle(heading) {
-  return heading.textContent.replace(/\s+/g, " ").trim() || "׳›׳•׳×׳¨׳× ׳׳׳ ׳˜׳§׳¡׳˜";
+  return heading.textContent.replace(/\s+/g, " ").trim() || "כותרת ללא טקסט";
 }
 
 function headingLevel(heading) {
@@ -1641,7 +1641,7 @@ function buildHeadingNav() {
   const uniqueHeadings = headings.filter((heading, index, all) => all.indexOf(heading) === index);
 
   if (!uniqueHeadings.length) {
-    els.headingNav.innerHTML = `<p class="nav-empty">׳׳™׳ ׳›׳•׳×׳¨׳•׳× ׳‘׳׳¡׳׳</p>`;
+    els.headingNav.innerHTML = `<p class="nav-empty">אין כותרות במסמך</p>`;
     return;
   }
 
@@ -1723,13 +1723,13 @@ function setupInstallPrompt() {
   window.addEventListener("appinstalled", () => {
     state.deferredInstallPrompt = null;
     els.installAppButton.hidden = true;
-    setStatus("׳”׳׳₪׳׳™׳§׳¦׳™׳” ׳”׳•׳×׳§׳ ׳”", "ready");
+    setStatus("האפליקציה הותקנה", "ready");
   });
 }
 
 async function installApp() {
   if (!state.deferredInstallPrompt) {
-    setStatus("׳”׳×׳§׳ ׳” ׳–׳׳™׳ ׳” ׳׳—׳¨׳™ ׳₪׳×׳™׳—׳” ׳“׳¨׳ ׳©׳¨׳× ׳׳§׳•׳׳™ ׳׳• ׳׳×׳¨ ׳׳׳•׳‘׳˜׳—", "error");
+    setStatus("התקנה זמינה אחרי פתיחה דרך שרת מקומי או אתר מאובטח", "error");
     return;
   }
 
@@ -1737,7 +1737,7 @@ async function installApp() {
   const choice = await state.deferredInstallPrompt.userChoice;
   state.deferredInstallPrompt = null;
   els.installAppButton.hidden = true;
-  if (choice.outcome === "accepted") setStatus("׳”׳׳₪׳׳™׳§׳¦׳™׳” ׳”׳•׳×׳§׳ ׳”", "ready");
+  if (choice.outcome === "accepted") setStatus("האפליקציה הותקנה", "ready");
 }
 
 function registerServiceWorker() {
@@ -1772,7 +1772,7 @@ els.openFileButton.addEventListener("click", async () => {
   } catch (error) {
     if (error.name !== "AbortError") {
       console.error(error);
-      setStatus("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳₪׳×׳•׳— ׳׳× ׳§׳•׳‘׳¥ Word", "error");
+      setStatus("לא הצלחתי לפתוח את קובץ Word", "error");
     }
   }
 });
@@ -1834,19 +1834,19 @@ els.exportTextButton.addEventListener("click", exportTextFile);
 els.installAppButton.addEventListener("click", () => {
   installApp().catch((error) => {
     console.error(error);
-    setStatus("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳₪׳×׳•׳— ׳”׳×׳§׳ ׳”", "error");
+    setStatus("לא הצלחתי לפתוח התקנה", "error");
   });
 });
 els.saveButton.addEventListener("click", () => {
   saveDocx().catch((error) => {
     console.error(error);
-    setStatus("׳”׳©׳׳™׳¨׳” ׳ ׳›׳©׳׳”. ׳›׳“׳׳™ ׳׳ ׳¡׳•׳× ׳©׳•׳‘ ׳׳• ׳׳©׳׳•׳¨ ׳¢׳•׳×׳§ ׳׳”׳˜׳§׳¡׳˜.", "error");
+    setStatus("השמירה נכשלה. כדאי לנסות שוב או לשמור עותק מהטקסט.", "error");
   });
 });
 els.autoSaveButton.addEventListener("click", () => {
   toggleAutoSave().catch((error) => {
     console.error(error);
-    setStatus("׳׳ ׳”׳¦׳׳—׳×׳™ ׳׳”׳₪׳¢׳™׳ ׳©׳׳™׳¨׳” ׳׳•׳˜׳•׳׳˜׳™׳×", "error");
+    setStatus("לא הצלחתי להפעיל שמירה אוטומטית", "error");
   });
 });
 
@@ -1921,7 +1921,7 @@ els.documentPositionInput.addEventListener("change", () => {
 els.toggleFootnotesButton.addEventListener("click", () => {
   els.footnotesPane.hidden = !els.footnotesPane.hidden;
   const hidden = els.footnotesPane.hidden;
-  els.toggleFootnotesButton.textContent = hidden ? "׳”׳¦׳’ ׳—׳׳•׳ ׳™׳×" : "׳”׳¡׳×׳¨ ׳—׳׳•׳ ׳™׳×";
+  els.toggleFootnotesButton.textContent = hidden ? "הצג חלונית" : "הסתר חלונית";
   els.toggleFootnotesButton.classList.toggle("active", !hidden);
   els.toggleFootnotesButton.setAttribute("aria-pressed", String(!hidden));
   if (!hidden) setTimeout(syncFootnoteToVisibleParagraph, 0);
