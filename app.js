@@ -1055,6 +1055,78 @@ function updateXmlFromEditor() {
   ensureFootnoteStylesForWord();
 }
 
+function assertEditorStructureIsSafeToSave() {
+  if (!state.isDocx) return;
+
+  const blocks = Array.from(els.editor.children).filter((node) =>
+    node.matches?.(".docx-paragraph, p, h1, h2, h3")
+  );
+  const mappedIndexes = blocks
+    .map((block) => block.dataset.paragraphIndex)
+    .filter((value) => value !== undefined && value !== "");
+  const uniqueIndexes = new Set(mappedIndexes);
+
+  if (
+    blocks.length !== state.paragraphNodes.length ||
+    mappedIndexes.length !== state.paragraphNodes.length ||
+    uniqueIndexes.size !== state.paragraphNodes.length
+  ) {
+    throw new Error(
+      "מבנה הפסקאות השתנה. כדי למנוע פגיעה בקובץ Word, השמירה נעצרה. " +
+      "אפשר לבטל את הוספת או מחיקת הפסקאות, או להוריד בינתיים קובץ טקסט."
+    );
+  }
+}
+
+function assertXmlIsReadable(xmlText, partName) {
+  const xml = parser.parseFromString(xmlText, "application/xml");
+  if (xml.querySelector("parsererror")) {
+    throw new Error(`קובץ ה־XML ${partName} אינו תקין לאחר השמירה.`);
+  }
+  return xml;
+}
+
+async function validateGeneratedDocx(blob) {
+  let verificationZip;
+  try {
+    verificationZip = await JSZip.loadAsync(blob);
+  } catch (error) {
+    throw new Error("קובץ ה־DOCX שנוצר אינו אריזת ZIP תקינה.");
+  }
+
+  const requiredParts = ["[Content_Types].xml", "_rels/.rels", "word/document.xml"];
+  const missingPart = requiredParts.find((path) => !verificationZip.file(path));
+  if (missingPart) {
+    throw new Error(`קובץ ה־DOCX שנוצר חסר את החלק החיוני ${missingPart}.`);
+  }
+
+  const documentText = await verificationZip.file("word/document.xml").async("text");
+  const documentXml = assertXmlIsReadable(documentText, "word/document.xml");
+  const documentBody = qName(documentXml, "body")[0];
+  if (!documentBody) throw new Error("קובץ ה־DOCX שנוצר אינו מכיל גוף מסמך.");
+
+  const references = Array.from(qName(documentXml, "footnoteReference"))
+    .map((node) => attr(node, "id"))
+    .filter((id) => Number(id) > 0);
+  if (references.length) {
+    const footnotesEntry = verificationZip.file("word/footnotes.xml");
+    if (!footnotesEntry) {
+      throw new Error("המסמך מכיל הפניות להערות שוליים, אך קובץ ההערות חסר.");
+    }
+    const footnotesText = await footnotesEntry.async("text");
+    const footnotesXml = assertXmlIsReadable(footnotesText, "word/footnotes.xml");
+    const noteIds = new Set(
+      Array.from(qName(footnotesXml, "footnote")).map((node) => attr(node, "id"))
+    );
+    const missingNote = references.find((id) => !noteIds.has(id));
+    if (missingNote) {
+      throw new Error(`הפניה להערת שוליים ${missingNote} אינה מצביעה על הערה קיימת.`);
+    }
+  }
+
+  return true;
+}
+
 function downloadBlob(blob, fileName) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -1142,6 +1214,7 @@ function exportTextFile() {
 async function createDocxBlob() {
   if (!state.zip || !state.documentXml) return;
 
+  assertEditorStructureIsSafeToSave();
   updateXmlFromEditor();
   await ensureDocxFootnotePackageParts();
   state.zip.file("word/document.xml", serializer.serializeToString(state.documentXml));
@@ -1152,10 +1225,12 @@ async function createDocxBlob() {
     state.zip.file("word/styles.xml", serializer.serializeToString(state.stylesXml));
   }
 
-  return state.zip.generateAsync({
+  const blob = await state.zip.generateAsync({
     type: "blob",
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   });
+  await validateGeneratedDocx(blob);
+  return blob;
 }
 
 async function saveDocx() {
