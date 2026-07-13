@@ -1,4 +1,4 @@
-const cacheName = "hebrew-text-editor-v6";
+const cacheName = "hebrew-text-editor-v7";
 const appShell = [
   "./",
   "./index.html",

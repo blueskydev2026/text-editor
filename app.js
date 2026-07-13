@@ -1033,6 +1033,8 @@ function ensureFootnoteStylesForWord() {
 }
 
 function updateXmlFromEditor() {
+  if (state.isDocx) syncNativeBoldMarkupFromEditor();
+
   state.textNodes.forEach((xmlNode, id) => {
     const htmlNode = els.editor.querySelector(`[data-text-id="${CSS.escape(id)}"]`);
     if (htmlNode) {
@@ -1341,6 +1343,104 @@ function replaceRunSpanWithParts(sourceSpan, parts) {
   sourceSpan.remove();
 }
 
+function explicitBoldValue(element) {
+  if (!(element instanceof HTMLElement)) return null;
+  if (element.matches("b, strong")) return true;
+
+  const weight = element.style.fontWeight;
+  if (!weight) return null;
+  if (weight === "bold" || weight === "bolder") return true;
+  if (weight === "normal" || weight === "lighter") return false;
+
+  const numericWeight = Number(weight);
+  if (!Number.isNaN(numericWeight)) return numericWeight >= 600;
+  return null;
+}
+
+function textNodeBoldValue(textNode, runSpan) {
+  let isBold = runSpan.dataset.bold === "true";
+  const path = [];
+  let node = textNode.parentElement;
+
+  while (node && node !== runSpan) {
+    path.unshift(node);
+    node = node.parentElement;
+  }
+
+  path.forEach((element) => {
+    const value = explicitBoldValue(element);
+    if (value !== null) isBold = value;
+  });
+
+  return isBold;
+}
+
+function collectNativeBoldParts(runSpan) {
+  const parts = [];
+  const walker = document.createTreeWalker(runSpan, NodeFilter.SHOW_TEXT);
+  let textNode = walker.nextNode();
+
+  while (textNode) {
+    const text = textNode.textContent;
+    if (text) {
+      const bold = textNodeBoldValue(textNode, runSpan);
+      const previous = parts[parts.length - 1];
+      if (previous && previous.bold === bold) {
+        previous.text += text;
+      } else {
+        parts.push({ text, bold });
+      }
+    }
+    textNode = walker.nextNode();
+  }
+
+  return parts;
+}
+
+function replaceDocxRunWithBoldParts(runSpan, parts) {
+  const xmlTextNode = state.textNodes.get(runSpan.dataset.textId);
+  const sourceRun = xmlTextNode?.parentNode;
+  const parent = sourceRun?.parentNode;
+  if (!sourceRun || !parent || !parts.length) return false;
+
+  if (parts.length === 1) {
+    runSpan.textContent = parts[0].text;
+    runSpan.dataset.bold = String(parts[0].bold);
+    runSpan.dataset.boldDirty = "true";
+    setRunBold(sourceRun, parts[0].bold);
+    return true;
+  }
+
+  const fragment = sourceRun.ownerDocument.createDocumentFragment();
+  const htmlParts = parts.map((part) => {
+    const { run, textNode } = cloneRunWithText(sourceRun, part.text, part.bold);
+    const textId = `t-${state.nextTextId++}`;
+    state.textNodes.set(textId, textNode);
+    fragment.append(run);
+    return { ...part, textId };
+  });
+
+  state.textNodes.delete(runSpan.dataset.textId);
+  parent.insertBefore(fragment, sourceRun);
+  sourceRun.remove();
+  replaceRunSpanWithParts(runSpan, htmlParts);
+  return true;
+}
+
+function syncNativeBoldMarkupFromEditor() {
+  Array.from(els.editor.querySelectorAll(".docx-run")).forEach((runSpan) => {
+    if (!runSpan.querySelector("b, strong, [style*='font-weight']")) return;
+
+    const parts = collectNativeBoldParts(runSpan);
+    if (!parts.length) return;
+
+    const originalText = runSpan.textContent;
+    const originalBold = runSpan.dataset.bold === "true";
+    const changed = parts.length > 1 || parts[0].text !== originalText || parts[0].bold !== originalBold;
+    if (changed) replaceDocxRunWithBoldParts(runSpan, parts);
+  });
+}
+
 function splitDocxRunForBold(runSpan, start, end, shouldBold) {
   const text = runSpan.textContent;
   const xmlTextNode = state.textNodes.get(runSpan.dataset.textId);
@@ -1422,6 +1522,7 @@ function applyEditorAlignment(command) {
 
 function runCommand(command, value = null) {
   els.editor.focus();
+  restoreEditorSelection();
   if (command === "bold" && state.isDocx && toggleWordBoldSelection()) return;
 
   if (command.startsWith("justify")) {

@@ -91,6 +91,15 @@ button:disabled {
   white-space: nowrap;
 }
 
+.icon-control {
+  width: 32px;
+  min-width: 32px;
+  min-height: 28px;
+  padding: 0;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
 .fallback-open {
   display: none;
 }
