@@ -690,6 +690,11 @@ function insertFootnote() {
     return;
   }
 
+  // Structural actions must start from the current DOM, not from the last
+  // rendered DOCX state, otherwise rebuilding a pane can restore old content.
+  updateXmlFromEditor();
+  syncParagraphStructureFromEditor();
+
   const id = nextFootnoteId();
   const defaultText = "הערה חדשה";
   let insertedReference = false;
@@ -914,6 +919,9 @@ function visibleFootnoteText(card) {
 }
 
 function syncFootnotesFromEditor() {
+  // Keep the in-memory HTML map current before any operation can rebuild the
+  // footnotes pane. The XML alone is not enough because rendering uses this map.
+  refreshFootnoteMapFromEditor();
   if (!state.footnotesXml) return;
 
   state.footnoteTextNodes.forEach((xmlNode, id) => {
