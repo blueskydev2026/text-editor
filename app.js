@@ -40,6 +40,10 @@ const els = {
   newDocButton: document.querySelector("#newDocButton"),
   saveButton: document.querySelector("#saveButton"),
   autoSaveButton: document.querySelector("#autoSaveButton"),
+  versionHistoryButton: document.querySelector("#versionHistoryButton"),
+  versionHistoryDialog: document.querySelector("#versionHistoryDialog"),
+  versionHistoryList: document.querySelector("#versionHistoryList"),
+  closeVersionHistoryButton: document.querySelector("#closeVersionHistoryButton"),
   installAppButton: document.querySelector("#installAppButton"),
   editor: document.querySelector("#editor"),
   editorShell: document.querySelector("#editorShell"),
@@ -145,6 +149,7 @@ function resetDocxState() {
   els.toggleFootnotesButton.classList.add("active");
   els.toggleFootnotesButton.setAttribute("aria-pressed", "true");
   els.toggleFootnotesButton.textContent = "הסתר חלונית";
+  if (els.versionHistoryButton) els.versionHistoryButton.disabled = true;
   if (els.autoSaveButton) {
     els.autoSaveButton.disabled = true;
     els.autoSaveButton.classList.remove("active");
@@ -844,6 +849,7 @@ async function openDocx(file, fileHandle = null) {
   els.documentMeta.textContent = `${paragraphs.length} פסקאות, ${state.footnoteMap.size} הערות שוליים`;
   els.saveButton.disabled = false;
   els.autoSaveButton.disabled = !state.openedFileHandle;
+  els.versionHistoryButton.disabled = false;
   state.isDocx = true;
   setStatus(state.openedFileHandle ? "המסמך פתוח לעריכה עם הרשאת שמירה" : "המסמך פתוח לעריכה ללא הרשאת שמירה לקובץ המקורי", "ready");
 }
@@ -1458,6 +1464,117 @@ function restoreLocalDraft() {
   }
 }
 
+const versionDbName = "hebrew-text-editor-versions";
+const versionStoreName = "versions";
+const maxDocumentVersions = 10;
+
+function openVersionDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(versionDbName, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      const store = db.createObjectStore(versionStoreName, { keyPath: "id", autoIncrement: true });
+      store.createIndex("fileName", "fileName");
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function versionStoreRequest(mode, operation) {
+  const db = await openVersionDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(versionStoreName, mode);
+    const store = transaction.objectStore(versionStoreName);
+    let result;
+    try {
+      result = operation(store);
+    } catch (error) {
+      db.close();
+      reject(error);
+      return;
+    }
+    transaction.oncomplete = () => {
+      db.close();
+      resolve(result?.result);
+    };
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error);
+    };
+  });
+}
+
+async function documentVersions(fileName = state.fileName) {
+  const versions = await versionStoreRequest("readonly", (store) => store.getAll());
+  return (versions || [])
+    .filter((version) => version.fileName === fileName)
+    .sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+}
+
+async function storeDocumentVersion(blob, fileName = state.fileName) {
+  await versionStoreRequest("readwrite", (store) => store.add({
+    fileName,
+    savedAt: new Date().toISOString(),
+    blob,
+  }));
+
+  const versions = await documentVersions(fileName);
+  const expired = versions.slice(maxDocumentVersions);
+  if (expired.length) {
+    await versionStoreRequest("readwrite", (store) => {
+      expired.forEach((version) => store.delete(version.id));
+    });
+  }
+}
+
+function formatVersionDate(isoDate) {
+  return new Intl.DateTimeFormat("he-IL", {
+    dateStyle: "short",
+    timeStyle: "medium",
+  }).format(new Date(isoDate));
+}
+
+async function renderVersionHistory() {
+  if (!state.fileName) return;
+  els.versionHistoryList.innerHTML = '<p class="version-empty">טוען גרסאות...</p>';
+  const versions = await documentVersions();
+  if (!versions.length) {
+    els.versionHistoryList.innerHTML = '<p class="version-empty">עדיין אין גרסאות קודמות למסמך הזה.</p>';
+    return;
+  }
+
+  els.versionHistoryList.innerHTML = versions.map((version) => `
+    <div class="version-item">
+      <span class="version-date">${escapeHtml(formatVersionDate(version.savedAt))}</span>
+      <button class="button" type="button" data-restore-version="${version.id}">שחזור</button>
+    </div>
+  `).join("");
+}
+
+async function restoreDocumentVersion(versionId) {
+  const versions = await documentVersions();
+  const version = versions.find((item) => item.id === Number(versionId));
+  if (!version) throw new Error("הגרסה המבוקשת לא נמצאה.");
+
+  const fileHandle = state.openedFileHandle;
+  const file = new File([version.blob], version.fileName, {
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    lastModified: Date.now(),
+  });
+  await openDocx(file, fileHandle);
+  els.versionHistoryDialog.close();
+  setStatus(`שוחזרה גרסה מתאריך ${formatVersionDate(version.savedAt)}. השינויים עדיין לא נכתבו לקובץ.`, "dirty");
+}
+
+async function preserveCurrentFileVersion() {
+  const currentFile = await state.openedFileHandle.getFile();
+  const bytes = await currentFile.arrayBuffer();
+  if (!bytes.byteLength) throw new Error("לא ניתן לשמור גרסה קודמת מפני שהקובץ המקורי ריק.");
+  const detachedBlob = new Blob([bytes], { type: currentFile.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+  await storeDocumentVersion(detachedBlob, state.fileName);
+}
+
 async function createDocxBlob() {
   if (!state.zip || !state.documentXml) return;
 
@@ -1508,6 +1625,7 @@ async function writeAutoSave() {
   try {
     setStatus("שומר אוטומטית...", "busy");
     const blob = await createDocxBlob();
+    await preserveCurrentFileVersion();
     let saved = false;
     for (let attempt = 0; attempt < 3 && !saved; attempt += 1) {
       let writable = null;
@@ -2441,6 +2559,24 @@ els.autoSaveButton.addEventListener("click", () => {
   toggleAutoSave().catch((error) => {
     console.error(error);
     setStatus("לא הצלחתי להפעיל שמירה אוטומטית", "error");
+  });
+});
+els.versionHistoryButton.addEventListener("click", () => {
+  els.versionHistoryDialog.showModal();
+  renderVersionHistory().catch((error) => {
+    console.error(error);
+    els.versionHistoryList.innerHTML = '<p class="version-empty">לא ניתן לטעון את היסטוריית הגרסאות.</p>';
+  });
+});
+els.closeVersionHistoryButton.addEventListener("click", () => els.versionHistoryDialog.close());
+els.versionHistoryList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-restore-version]");
+  if (!button) return;
+  button.disabled = true;
+  restoreDocumentVersion(button.dataset.restoreVersion).catch((error) => {
+    console.error(error);
+    button.disabled = false;
+    setStatus("שחזור הגרסה נכשל", "error");
   });
 });
 
