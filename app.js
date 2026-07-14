@@ -332,6 +332,14 @@ function renderFootnoteCard(id) {
 }
 
 function renderFootnotesPane() {
+  // Last line of defence against data loss: before replacing the pane, keep
+  // the live DOM value for every note that still exists in the model.
+  els.footnotesList.querySelectorAll(".footnote-card[data-footnote-id]").forEach((card) => {
+    const id = card.dataset.footnoteId;
+    const body = card.querySelector(".footnote-body");
+    if (body && state.footnoteMap.has(id)) state.footnoteMap.set(id, body.innerHTML);
+  });
+
   if (!state.footnoteMap.size) {
     els.footnotesList.innerHTML = `<p class="footnotes-empty">אין הערות שוליים במסמך הזה.</p>`;
     els.activeFootnoteLabel.textContent = "אין הערות במסמך";
@@ -2242,6 +2250,13 @@ function restoreSurfaceSelection(surface, selectionState) {
   selection.addRange(range);
 }
 
+function updateFootnoteMapFromInput(event) {
+  const card = event.target.closest?.(".footnote-card[data-footnote-id]");
+  const body = card?.querySelector(".footnote-body");
+  if (!card || !body) return;
+  state.footnoteMap.set(card.dataset.footnoteId, body.innerHTML);
+}
+
 function refreshFootnoteMapFromEditor() {
   state.footnoteMap.clear();
   els.footnotesList.querySelectorAll(".footnote-card[data-footnote-id]").forEach((card) => {
@@ -2805,6 +2820,7 @@ els.editor.addEventListener("paste", (event) => {
   markDocumentDirty();
 });
 els.footnotesList.addEventListener("beforeinput", captureEditBeforeInput);
+els.footnotesList.addEventListener("input", updateFootnoteMapFromInput);
 els.footnotesList.addEventListener("input", commitEditHistory);
 els.footnotesList.addEventListener("keydown", handleUndoRedo);
 els.footnotesList.addEventListener("input", markDocumentDirty);
