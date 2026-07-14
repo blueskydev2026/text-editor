@@ -1494,15 +1494,25 @@ async function writeAutoSave() {
     const blob = await createDocxBlob();
     let saved = false;
     for (let attempt = 0; attempt < 3 && !saved; attempt += 1) {
+      let writable = null;
       try {
-        await state.openedFileHandle.getFile();
-        const writable = await state.openedFileHandle.createWritable();
+        // Do not call getFile() here. It returns a snapshot that can become stale
+        // before createWritable(), which causes InvalidStateError in Chromium.
+        writable = await state.openedFileHandle.createWritable();
         await writable.write(blob);
         await writable.close();
+        writable = null;
         saved = true;
       } catch (error) {
+        if (writable) {
+          try {
+            await writable.abort();
+          } catch {
+            // The stream may already be closed or invalid.
+          }
+        }
         if (error.name !== "InvalidStateError" || attempt === 2) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
       }
     }
     setStatus("נשמר אוטומטית בקובץ המקורי", "ready");
@@ -1554,6 +1564,14 @@ async function toggleAutoSave() {
   }
 
   try {
+    const permission = await state.openedFileHandle.queryPermission({ mode: "readwrite" });
+    const granted = permission === "granted"
+      || await state.openedFileHandle.requestPermission({ mode: "readwrite" }) === "granted";
+    if (!granted) {
+      setStatus("נדרשת הרשאת כתיבה כדי להפעיל שמירה אוטומטית", "error");
+      return;
+    }
+
     state.autoSaveEnabled = true;
     els.autoSaveButton.classList.add("active");
     els.autoSaveButton.setAttribute("aria-pressed", "true");
