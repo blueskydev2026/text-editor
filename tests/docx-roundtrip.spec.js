@@ -198,15 +198,21 @@ test("autosave reconnects a stale file handle without losing edits", async ({ pa
     };
     window.showOpenFilePicker = async () => {
       window.__pickerCalls += 1;
-      return [window.__pickerCalls === 1 ? staleHandle : freshHandle];
+      return [staleHandle];
     };
+    window.showDirectoryPicker = async () => ({
+      getFileHandle: async (name) => {
+        if (name !== file.name) throw new DOMException("missing", "NotFoundError");
+        return freshHandle;
+      },
+    });
   }, { base64 });
 
   await page.goto("/");
   await page.locator("#openFileButton").click();
   await page.locator("#autoSaveButton").click();
   await expect(page.locator("#autoSaveButton")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#autoSaveButton")).toHaveText("חיבור מחדש לשמירה");
+  await expect(page.locator("#autoSaveButton")).toHaveText("בחירת תיקייה לשמירה");
   await page.locator("#editor .docx-run").first().evaluate((run) => {
     run.textContent = "שינוי שנשמר אחרי חיבור מחדש";
     run.closest("#editor").dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
