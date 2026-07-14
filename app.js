@@ -34,7 +34,6 @@ const els = {
   fileInput: document.querySelector("#fileInput"),
   newDocButton: document.querySelector("#newDocButton"),
   saveButton: document.querySelector("#saveButton"),
-  exportTextButton: document.querySelector("#exportTextButton"),
   autoSaveButton: document.querySelector("#autoSaveButton"),
   installAppButton: document.querySelector("#installAppButton"),
   editor: document.querySelector("#editor"),
@@ -1442,22 +1441,6 @@ function restoreLocalDraft() {
   }
 }
 
-function exportTextFile() {
-  const text = plainEditorText();
-  if (!text) {
-    setStatus("אין טקסט להורדה", "error");
-    return;
-  }
-
-  const cleanName = (state.fileName || els.documentName.textContent || "מסמך")
-    .replace(/\.docx$/i, "")
-    .replace(/[\\/:*?"<>|]/g, "-")
-    .trim() || "מסמך";
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-  downloadBlob(blob, `${cleanName}.txt`);
-  setStatus("קובץ הטקסט ירד למחשב", "ready");
-}
-
 async function createDocxBlob() {
   if (!state.zip || !state.documentXml) return;
 
@@ -2272,7 +2255,6 @@ document.addEventListener("click", (event) => {
 });
 
 els.newDocButton.addEventListener("click", newDocument);
-els.exportTextButton.addEventListener("click", exportTextFile);
 els.installAppButton.addEventListener("click", () => {
   installApp().catch((error) => {
     console.error(error);
