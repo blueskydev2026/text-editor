@@ -32,6 +32,7 @@
         <button id="newDocButton" class="button" type="button">מסמך חדש</button>
         <button id="saveButton" class="button" type="button" disabled>שמירה כ־DOCX</button>
         <button id="autoSaveButton" class="button" type="button" disabled aria-pressed="false">שמירה אוטומטית</button>
+        <button id="versionHistoryButton" class="button" type="button" disabled>גרסאות קודמות</button>
         <button id="installAppButton" class="button install-button" type="button" hidden>התקנה כאפליקציה</button>
       </div>
       <aside id="topTools" class="top-tools" aria-label="כלי עריכה" aria-hidden="false">
@@ -134,6 +135,15 @@
         </section>
       </section>
     </main>
+
+    <dialog id="versionHistoryDialog" class="version-dialog" aria-labelledby="versionHistoryTitle">
+      <div class="version-dialog-head">
+        <h2 id="versionHistoryTitle">גרסאות קודמות</h2>
+        <button id="closeVersionHistoryButton" class="button" type="button">סגירה</button>
+      </div>
+      <p class="version-help">נשמרות עד 10 גרסאות קודמות של המסמך בדפדפן הזה.</p>
+      <div id="versionHistoryList" class="version-list"></div>
+    </dialog>
 
     <div id="editorContextMenu" class="context-menu" role="menu" hidden>
       <button id="contextInsertFootnoteButton" type="button" role="menuitem" title="Ctrl+Alt+F">הוסף הערת שוליים</button>
