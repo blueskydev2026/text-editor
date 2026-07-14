@@ -28,6 +28,10 @@
   isDraggingDocumentPosition: false,
   deferredInstallPrompt: null,
   savedEditorRange: null,
+  editHistory: {
+    editor: { undo: [], redo: [], pending: null },
+    footnotes: { undo: [], redo: [], pending: null },
+  },
 };
 
 const els = {
@@ -127,6 +131,11 @@ function resetDocxState() {
   state.isResizingFootnotes = false;
   state.isDraggingDocumentPosition = false;
   state.savedEditorRange = null;
+  Object.values(state.editHistory).forEach((history) => {
+    history.undo.length = 0;
+    history.redo.length = 0;
+    history.pending = null;
+  });
   els.documentPositionInput.value = "0";
   els.documentPositionOutput.textContent = "0%";
   els.headingNav.innerHTML = `<p class="nav-empty">אין כותרות במסמך</p>`;
@@ -2029,6 +2038,138 @@ function markDocumentDirty() {
   scheduleAutoSave();
 }
 
+function editingSurfaceForNode(node) {
+  const element = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  if (element && els.editor.contains(element)) return { name: "editor", root: els.editor };
+  const footnoteBody = element?.closest?.(".footnote-body");
+  if (footnoteBody && els.footnotesList.contains(footnoteBody)) {
+    return { name: "footnotes", root: els.footnotesList };
+  }
+  return null;
+}
+
+function nodePathFromRoot(root, node) {
+  const path = [];
+  let current = node;
+  while (current && current !== root) {
+    const parent = current.parentNode;
+    if (!parent) return null;
+    path.unshift(Array.prototype.indexOf.call(parent.childNodes, current));
+    current = parent;
+  }
+  return current === root ? path : null;
+}
+
+function nodeFromPath(root, path) {
+  let node = root;
+  for (const index of path || []) {
+    node = node.childNodes[index];
+    if (!node) return null;
+  }
+  return node;
+}
+
+function captureSurfaceSnapshot(surface) {
+  const selection = window.getSelection();
+  let selectionState = null;
+  if (selection?.rangeCount) {
+    const range = selection.getRangeAt(0);
+    if (surface.root.contains(range.startContainer) && surface.root.contains(range.endContainer)) {
+      selectionState = {
+        startPath: nodePathFromRoot(surface.root, range.startContainer),
+        startOffset: range.startOffset,
+        endPath: nodePathFromRoot(surface.root, range.endContainer),
+        endOffset: range.endOffset,
+      };
+    }
+  }
+  return {
+    html: surface.root.innerHTML,
+    selection: selectionState,
+    activeFootnoteId: state.activeFootnoteId,
+  };
+}
+
+function restoreSurfaceSelection(surface, selectionState) {
+  if (!selectionState) return;
+  const startNode = nodeFromPath(surface.root, selectionState.startPath);
+  const endNode = nodeFromPath(surface.root, selectionState.endPath);
+  if (!startNode || !endNode) return;
+
+  const range = document.createRange();
+  const maxStart = startNode.nodeType === Node.TEXT_NODE ? startNode.textContent.length : startNode.childNodes.length;
+  const maxEnd = endNode.nodeType === Node.TEXT_NODE ? endNode.textContent.length : endNode.childNodes.length;
+  range.setStart(startNode, Math.min(selectionState.startOffset, maxStart));
+  range.setEnd(endNode, Math.min(selectionState.endOffset, maxEnd));
+  const selection = window.getSelection();
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function refreshFootnoteMapFromEditor() {
+  state.footnoteMap.clear();
+  els.footnotesList.querySelectorAll(".footnote-card[data-footnote-id]").forEach((card) => {
+    const body = card.querySelector(".footnote-body");
+    state.footnoteMap.set(card.dataset.footnoteId, body?.innerHTML || "");
+  });
+  els.activeFootnoteLabel.textContent = state.footnoteMap.size ? `${state.footnoteMap.size} הערות` : "אין הערות במסמך";
+}
+
+function restoreSurfaceSnapshot(surface, snapshot) {
+  surface.root.innerHTML = snapshot.html;
+  if (surface.name === "footnotes") {
+    state.activeFootnoteId = snapshot.activeFootnoteId;
+    refreshFootnoteMapFromEditor();
+  }
+  surface.root.focus();
+  restoreSurfaceSelection(surface, snapshot.selection);
+  if (surface.name === "editor") state.savedEditorRange = snapshot.selection ? window.getSelection()?.getRangeAt(0)?.cloneRange() : null;
+  markDocumentDirty();
+}
+
+function applyHistoryStep(surface, direction) {
+  const history = state.editHistory[surface.name];
+  const source = history[direction];
+  if (!source.length) return false;
+
+  const destination = direction === "undo" ? history.redo : history.undo;
+  destination.push(captureSurfaceSnapshot(surface));
+  restoreSurfaceSnapshot(surface, source.pop());
+  history.pending = null;
+  return true;
+}
+
+function captureEditBeforeInput(event) {
+  if (event.inputType === "historyUndo" || event.inputType === "historyRedo") return;
+  const surface = editingSurfaceForNode(event.target);
+  if (!surface) return;
+  state.editHistory[surface.name].pending = captureSurfaceSnapshot(surface);
+}
+
+function commitEditHistory(event) {
+  const surface = editingSurfaceForNode(event.target);
+  if (!surface) return;
+  const history = state.editHistory[surface.name];
+  if (!history.pending) return;
+  history.undo.push(history.pending);
+  if (history.undo.length > 100) history.undo.shift();
+  history.redo.length = 0;
+  history.pending = null;
+}
+
+function handleUndoRedo(event) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+  const key = event.key.toLowerCase();
+  const isUndo = key === "z" && !event.shiftKey;
+  const isRedo = key === "y" || (key === "z" && event.shiftKey);
+  if (!isUndo && !isRedo) return;
+
+  const surface = editingSurfaceForNode(event.target);
+  if (!surface) return;
+  event.preventDefault();
+  applyHistoryStep(surface, isUndo ? "undo" : "redo");
+}
+
 function sharedFootnoteZoomValue(editorZoomValue) {
   return Math.max(78, Math.round(Number(editorZoomValue) * 0.86));
 }
@@ -2370,6 +2511,9 @@ els.toggleFootnotesButton.addEventListener("click", () => {
   if (!hidden) setTimeout(syncFootnoteToVisibleParagraph, 0);
 });
 
+els.editor.addEventListener("beforeinput", captureEditBeforeInput);
+els.editor.addEventListener("input", commitEditHistory);
+els.editor.addEventListener("keydown", handleUndoRedo);
 els.editor.addEventListener("input", markDocumentDirty);
 function caretRangeAtPoint(x, y) {
   if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
@@ -2506,6 +2650,9 @@ els.editor.addEventListener("paste", (event) => {
   document.execCommand("insertHTML", false, doc.body.innerHTML);
   markDocumentDirty();
 });
+els.footnotesList.addEventListener("beforeinput", captureEditBeforeInput);
+els.footnotesList.addEventListener("input", commitEditHistory);
+els.footnotesList.addEventListener("keydown", handleUndoRedo);
 els.footnotesList.addEventListener("input", markDocumentDirty);
 els.footnotesList.addEventListener("click", (event) => {
   const button = event.target.closest("[data-delete-footnote]");
