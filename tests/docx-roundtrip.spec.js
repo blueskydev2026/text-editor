@@ -190,10 +190,11 @@ test("controlled footnote drag moves only the reference and preserves text", asy
   await page.locator("#editor").evaluate((editor) => {
     const ref = editor.querySelector(".footnote-ref");
     const target = editor.children[1].querySelector(".docx-run");
-    const data = new DataTransfer();
-    ref.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: data }));
     const box = target.getBoundingClientRect();
-    editor.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data, clientX: box.left + 2, clientY: box.top + box.height / 2 }));
+    const start = ref.getBoundingClientRect();
+    ref.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1, clientX: start.left, clientY: start.top }));
+    ref.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, cancelable: true, pointerId: 1, clientX: box.left + 2, clientY: box.top + box.height / 2 }));
+    ref.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, pointerId: 1, clientX: box.left + 2, clientY: box.top + box.height / 2 }));
   });
   const after = await page.locator("#editor").evaluate((editor) => {
     const copy = editor.cloneNode(true);
