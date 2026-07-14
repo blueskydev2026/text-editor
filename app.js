@@ -22,6 +22,7 @@
   isAutoSaving: false,
   autoSavePending: false,
   autoSaveRetryCount: 0,
+  autoSaveNeedsReconnect: false,
   footnotePointerMove: null,
   cutFootnoteIds: [],
   activeFootnoteId: null,
@@ -123,6 +124,8 @@ function resetDocxState() {
   state.autoSaveTimer = null;
   state.isAutoSaving = false;
   state.autoSavePending = false;
+  state.autoSaveRetryCount = 0;
+  state.autoSaveNeedsReconnect = false;
   state.footnotePointerMove = null;
   state.activeFootnoteId = null;
   state.isResizingFootnotes = false;
@@ -1490,14 +1493,12 @@ async function writeAutoSave() {
 
   state.isAutoSaving = true;
   state.autoSavePending = false;
-  let retryDelay = null;
   try {
     setStatus("שומר אוטומטית...", "busy");
     const blob = await createDocxBlob();
     let saved = false;
     for (let attempt = 0; attempt < 3 && !saved; attempt += 1) {
       try {
-        await state.openedFileHandle.getFile();
         const writable = await state.openedFileHandle.createWritable();
         await writable.write(blob);
         await writable.close();
@@ -1508,13 +1509,15 @@ async function writeAutoSave() {
       }
     }
     state.autoSaveRetryCount = 0;
+    state.autoSaveNeedsReconnect = false;
     setStatus("נשמר אוטומטית בקובץ המקורי", "ready");
   } catch (error) {
     if (error.name === "InvalidStateError") {
-      console.warn("Auto-save will retry after the file state changed", error);
-      state.autoSaveRetryCount += 1;
-      retryDelay = Math.min(750 * (2 ** (state.autoSaveRetryCount - 1)), 15000);
-      setStatus("הקובץ השתנה בזמן השמירה — מנסה שוב אוטומטית", "busy");
+      console.warn("Auto-save file access became stale and must be reconnected", error);
+      state.autoSaveNeedsReconnect = true;
+      state.autoSaveRetryCount = 0;
+      els.autoSaveButton.textContent = "חיבור מחדש לשמירה";
+      setStatus("הגישה לקובץ התיישנה — לחץ על חיבור מחדש לשמירה", "error");
     } else {
       console.error(error);
       state.autoSaveEnabled = false;
@@ -1526,22 +1529,43 @@ async function writeAutoSave() {
     }
   } finally {
     state.isAutoSaving = false;
-    if (state.autoSaveEnabled && (state.autoSavePending || retryDelay !== null)) {
-      const delay = state.autoSavePending ? 250 : retryDelay;
+    if (state.autoSaveEnabled && !state.autoSaveNeedsReconnect && state.autoSavePending) {
       state.autoSavePending = false;
       clearTimeout(state.autoSaveTimer);
-      state.autoSaveTimer = setTimeout(writeAutoSave, delay);
+      state.autoSaveTimer = setTimeout(writeAutoSave, 250);
     }
   }
 }
 
 function scheduleAutoSave() {
-  if (!state.autoSaveEnabled) return;
+  if (!state.autoSaveEnabled || state.autoSaveNeedsReconnect) return;
   if (state.isAutoSaving) state.autoSavePending = true;
   clearTimeout(state.autoSaveTimer);
   state.autoSaveTimer = setTimeout(() => {
     writeAutoSave();
   }, 1600);
+}
+
+async function reconnectAutoSaveHandle() {
+  if (!window.showOpenFilePicker) return;
+  const [fileHandle] = await window.showOpenFilePicker({
+    multiple: false,
+    types: [{
+      description: "Word document",
+      accept: { "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] },
+    }],
+  });
+  const file = await fileHandle.getFile();
+  if (file.name !== state.fileName) {
+    setStatus(`יש לבחור מחדש את הקובץ ${state.fileName}`, "error");
+    return;
+  }
+  state.openedFileHandle = fileHandle;
+  state.autoSaveNeedsReconnect = false;
+  state.autoSaveRetryCount = 0;
+  els.autoSaveButton.textContent = "שמירה אוטומטית פעילה";
+  setStatus("הגישה לקובץ חוברה מחדש — שומר כעת", "busy");
+  await writeAutoSave();
 }
 
 async function toggleAutoSave() {
@@ -1550,10 +1574,16 @@ async function toggleAutoSave() {
     return;
   }
 
+  if (state.autoSaveNeedsReconnect) {
+    await reconnectAutoSaveHandle();
+    return;
+  }
+
   if (state.autoSaveEnabled) {
     clearTimeout(state.autoSaveTimer);
     state.autoSaveEnabled = false;
     state.autoSaveRetryCount = 0;
+    state.autoSaveNeedsReconnect = false;
     els.autoSaveButton.classList.remove("active");
     els.autoSaveButton.setAttribute("aria-pressed", "false");
     els.autoSaveButton.textContent = "שמירה אוטומטית";
