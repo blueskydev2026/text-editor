@@ -331,14 +331,17 @@ function renderFootnoteCard(id) {
   `;
 }
 
-function renderFootnotesPane() {
+function renderFootnotesPane(preserveLiveValues = true) {
   // Last line of defence against data loss: before replacing the pane, keep
-  // the live DOM value for every note that still exists in the model.
-  els.footnotesList.querySelectorAll(".footnote-card[data-footnote-id]").forEach((card) => {
-    const id = card.dataset.footnoteId;
-    const body = card.querySelector(".footnote-body");
-    if (body && state.footnoteMap.has(id)) state.footnoteMap.set(id, body.innerHTML);
-  });
+  // the live DOM value for every note that still exists in the model. This is
+  // intentionally skipped during renumbering because old and new IDs overlap.
+  if (preserveLiveValues) {
+    els.footnotesList.querySelectorAll(".footnote-card[data-footnote-id]").forEach((card) => {
+      const id = card.dataset.footnoteId;
+      const body = card.querySelector(".footnote-body");
+      if (body && state.footnoteMap.has(id)) state.footnoteMap.set(id, body.innerHTML);
+    });
+  }
 
   if (!state.footnoteMap.size) {
     els.footnotesList.innerHTML = `<p class="footnotes-empty">אין הערות שוליים במסמך הזה.</p>`;
@@ -728,13 +731,15 @@ function insertFootnote() {
     return;
   }
 
-  renderFootnotesPane();
+  const footnoteIdMapping = state.isDocx ? renumberFootnotesByReferenceOrder() : new Map();
+  const finalId = footnoteIdMapping.get(id) || id;
+  renderFootnotesPane(false);
   els.footnotesPane.hidden = false;
   els.toggleFootnotesButton.classList.add("active");
   els.toggleFootnotesButton.setAttribute("aria-pressed", "true");
   els.toggleFootnotesButton.textContent = "הסתר חלונית";
-  setActiveFootnote(id);
-  focusFootnoteBody(id);
+  setActiveFootnote(finalId);
+  focusFootnoteBody(finalId);
   markDocumentDirty();
   setStatus("הערת שוליים נוספה", "dirty");
 }
@@ -1323,14 +1328,14 @@ function ensureReferencedFootnotesExist() {
 }
 
 function renumberFootnotesByReferenceOrder() {
-  if (!state.documentXml || !state.footnotesXml) return;
+  if (!state.documentXml || !state.footnotesXml) return new Map();
   const orderedIds = [];
   Array.from(qName(state.documentXml, "footnoteReference")).forEach((reference) => {
     const id = attr(reference, "id");
     if (!orderedIds.includes(id)) orderedIds.push(id);
   });
   const mapping = new Map(orderedIds.map((id, index) => [id, String(index + 1)]));
-  if ([...mapping].every(([oldId, newId]) => oldId === newId)) return;
+  if ([...mapping].every(([oldId, newId]) => oldId === newId)) return mapping;
 
   Array.from(qName(state.documentXml, "footnoteReference")).forEach((reference) => {
     const newId = mapping.get(attr(reference, "id"));
@@ -1360,7 +1365,8 @@ function renumberFootnotesByReferenceOrder() {
       ref.textContent = newId;
     }
   });
-  renderFootnotesPane();
+  renderFootnotesPane(false);
+  return mapping;
 }
 
 function assertXmlIsReadable(xmlText, partName) {
