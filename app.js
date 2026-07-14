@@ -21,6 +21,7 @@
   autoSaveTimer: null,
   isAutoSaving: false,
   autoSavePending: false,
+  autoSaveRetryCount: 0,
   footnotePointerMove: null,
   cutFootnoteIds: [],
   activeFootnoteId: null,
@@ -1489,6 +1490,7 @@ async function writeAutoSave() {
 
   state.isAutoSaving = true;
   state.autoSavePending = false;
+  let retryDelay = null;
   try {
     setStatus("שומר אוטומטית...", "busy");
     const blob = await createDocxBlob();
@@ -1505,20 +1507,30 @@ async function writeAutoSave() {
         await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
       }
     }
+    state.autoSaveRetryCount = 0;
     setStatus("נשמר אוטומטית בקובץ המקורי", "ready");
   } catch (error) {
-    console.error(error);
-    state.autoSaveEnabled = false;
-    els.autoSaveButton.classList.remove("active");
-    els.autoSaveButton.setAttribute("aria-pressed", "false");
-    els.autoSaveButton.textContent = "שמירה אוטומטית";
-    setStatus("השמירה האוטומטית נכשלה וכובתה", "error");
+    if (error.name === "InvalidStateError") {
+      console.warn("Auto-save will retry after the file state changed", error);
+      state.autoSaveRetryCount += 1;
+      retryDelay = Math.min(750 * (2 ** (state.autoSaveRetryCount - 1)), 15000);
+      setStatus("הקובץ השתנה בזמן השמירה — מנסה שוב אוטומטית", "busy");
+    } else {
+      console.error(error);
+      state.autoSaveEnabled = false;
+      state.autoSaveRetryCount = 0;
+      els.autoSaveButton.classList.remove("active");
+      els.autoSaveButton.setAttribute("aria-pressed", "false");
+      els.autoSaveButton.textContent = "שמירה אוטומטית";
+      setStatus("השמירה האוטומטית נכשלה וכובתה", "error");
+    }
   } finally {
     state.isAutoSaving = false;
-    if (state.autoSaveEnabled && state.autoSavePending) {
+    if (state.autoSaveEnabled && (state.autoSavePending || retryDelay !== null)) {
+      const delay = state.autoSavePending ? 250 : retryDelay;
       state.autoSavePending = false;
       clearTimeout(state.autoSaveTimer);
-      state.autoSaveTimer = setTimeout(writeAutoSave, 250);
+      state.autoSaveTimer = setTimeout(writeAutoSave, delay);
     }
   }
 }
@@ -1541,6 +1553,7 @@ async function toggleAutoSave() {
   if (state.autoSaveEnabled) {
     clearTimeout(state.autoSaveTimer);
     state.autoSaveEnabled = false;
+    state.autoSaveRetryCount = 0;
     els.autoSaveButton.classList.remove("active");
     els.autoSaveButton.setAttribute("aria-pressed", "false");
     els.autoSaveButton.textContent = "שמירה אוטומטית";
