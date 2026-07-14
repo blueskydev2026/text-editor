@@ -21,7 +21,7 @@
   autoSaveTimer: null,
   isAutoSaving: false,
   autoSavePending: false,
-  draggingFootnoteId: null,
+  footnotePointerMove: null,
   activeFootnoteId: null,
   isResizingFootnotes: false,
   isDraggingDocumentPosition: false,
@@ -34,7 +34,6 @@ const els = {
   fileInput: document.querySelector("#fileInput"),
   newDocButton: document.querySelector("#newDocButton"),
   saveButton: document.querySelector("#saveButton"),
-  exportTextButton: document.querySelector("#exportTextButton"),
   autoSaveButton: document.querySelector("#autoSaveButton"),
   installAppButton: document.querySelector("#installAppButton"),
   editor: document.querySelector("#editor"),
@@ -122,7 +121,7 @@ function resetDocxState() {
   state.autoSaveTimer = null;
   state.isAutoSaving = false;
   state.autoSavePending = false;
-  state.draggingFootnoteId = null;
+  state.footnotePointerMove = null;
   state.activeFootnoteId = null;
   state.isResizingFootnotes = false;
   state.isDraggingDocumentPosition = false;
@@ -545,7 +544,7 @@ function createFootnoteRefElement(id) {
   const ref = document.createElement("sup");
   ref.className = "footnote-ref";
   ref.contentEditable = "false";
-  ref.draggable = true;
+  ref.draggable = false;
   ref.dataset.footnoteRef = id;
   ref.textContent = id;
   return ref;
@@ -767,7 +766,7 @@ function renderRun(run) {
     if (child.localName === "br") chunks.push("<br>");
     if (child.localName === "footnoteReference") {
       const id = attr(child, "id");
-      chunks.push(`<sup class="footnote-ref" contenteditable="false" draggable="true" data-footnote-ref="${escapeHtml(id)}">${escapeHtml(id)}</sup>`);
+      chunks.push(`<sup class="footnote-ref" contenteditable="false" draggable="false" data-footnote-ref="${escapeHtml(id)}">${escapeHtml(id)}</sup>`);
     }
   });
   return chunks.join("");
@@ -1440,22 +1439,6 @@ function restoreLocalDraft() {
     localStorage.removeItem(localDraftKey);
     updateDocumentStats();
   }
-}
-
-function exportTextFile() {
-  const text = plainEditorText();
-  if (!text) {
-    setStatus("אין טקסט להורדה", "error");
-    return;
-  }
-
-  const cleanName = (state.fileName || els.documentName.textContent || "מסמך")
-    .replace(/\.docx$/i, "")
-    .replace(/[\\/:*?"<>|]/g, "-")
-    .trim() || "מסמך";
-  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-  downloadBlob(blob, `${cleanName}.txt`);
-  setStatus("קובץ הטקסט ירד למחשב", "ready");
 }
 
 async function createDocxBlob() {
@@ -2272,7 +2255,6 @@ document.addEventListener("click", (event) => {
 });
 
 els.newDocButton.addEventListener("click", newDocument);
-els.exportTextButton.addEventListener("click", exportTextFile);
 els.installAppButton.addEventListener("click", () => {
   installApp().catch((error) => {
     console.error(error);
@@ -2370,42 +2352,65 @@ els.toggleFootnotesButton.addEventListener("click", () => {
 });
 
 els.editor.addEventListener("input", markDocumentDirty);
-els.editor.addEventListener("dragstart", (event) => {
-  const ref = event.target.closest?.(".footnote-ref[data-footnote-ref]");
-  if (!ref) return;
-  state.draggingFootnoteId = ref.dataset.footnoteRef;
-  event.dataTransfer?.setData("text/x-footnote-id", state.draggingFootnoteId);
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-});
-els.editor.addEventListener("dragover", (event) => {
-  if (!state.draggingFootnoteId && !event.dataTransfer?.types.includes("text/x-footnote-id")) return;
-  event.preventDefault();
-  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
-});
-els.editor.addEventListener("drop", (event) => {
-  const id = state.draggingFootnoteId || event.dataTransfer?.getData("text/x-footnote-id");
-  state.draggingFootnoteId = null;
-  if (!id) return;
-  event.preventDefault();
+function caretRangeAtPoint(x, y) {
+  if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+  const position = document.caretPositionFromPoint?.(x, y);
+  if (!position) return null;
+  const range = document.createRange();
+  range.setStart(position.offsetNode, position.offset);
+  range.collapse(true);
+  return range;
+}
 
-  const range = document.caretRangeFromPoint?.(event.clientX, event.clientY);
+function moveFootnoteReferenceToPoint(id, x, y) {
+  const range = caretRangeAtPoint(x, y);
   const targetNode = range?.startContainer?.nodeType === Node.TEXT_NODE ? range.startContainer.parentElement : range?.startContainer;
   const targetBlock = targetNode?.closest?.(".docx-paragraph, p, h1, h2, h3");
-  if (!targetBlock || !els.editor.contains(targetBlock)) return;
+  if (!range || !targetBlock || !els.editor.contains(targetBlock)) return false;
   const targetRun = targetNode.closest?.(".docx-run[data-text-id]");
+
+  Array.from(qName(state.documentXml, "footnoteReference"))
+    .filter((reference) => attr(reference, "id") === id)
+    .forEach((reference) => {
+      const run = reference.parentNode;
+      reference.remove();
+      if (run?.localName === "r" && !qName(run, "t").length) run.remove();
+    });
   els.editor.querySelectorAll(`.footnote-ref[data-footnote-ref="${CSS.escape(id)}"]`).forEach((ref) => ref.remove());
-  const movedRef = createFootnoteRefElement(id);
-  if (targetRun) {
-    const textLength = targetRun.textContent.length;
-    const placeAfter = range?.startOffset >= textLength / 2;
-    targetRun[placeAfter ? "after" : "before"](movedRef);
-  } else {
-    targetBlock.append(movedRef);
-  }
+
+  const inserted = targetRun
+    ? insertReferenceIntoDocxRun(range, targetRun, id)
+    : appendReferenceToDocxParagraph(targetBlock, id);
+  if (!inserted) return false;
+  setActiveFootnote(id, false);
   markDocumentDirty();
+  return true;
+}
+
+els.editor.addEventListener("dragstart", (event) => {
+  if (event.target.closest?.(".footnote-ref")) event.preventDefault();
 });
-els.editor.addEventListener("dragend", () => {
-  state.draggingFootnoteId = null;
+els.editor.addEventListener("pointerdown", (event) => {
+  const ref = event.target.closest?.(".footnote-ref[data-footnote-ref]");
+  if (!ref) return;
+  state.footnotePointerMove = { id: ref.dataset.footnoteRef, x: event.clientX, y: event.clientY, moved: false };
+  try { ref.setPointerCapture?.(event.pointerId); } catch (_) { /* Synthetic events may not own a pointer. */ }
+});
+els.editor.addEventListener("pointermove", (event) => {
+  const move = state.footnotePointerMove;
+  if (!move) return;
+  if (Math.hypot(event.clientX - move.x, event.clientY - move.y) > 5) move.moved = true;
+  if (move.moved) event.preventDefault();
+});
+els.editor.addEventListener("pointerup", (event) => {
+  const move = state.footnotePointerMove;
+  state.footnotePointerMove = null;
+  if (!move?.moved) return;
+  event.preventDefault();
+  moveFootnoteReferenceToPoint(move.id, event.clientX, event.clientY);
+});
+els.editor.addEventListener("pointercancel", () => {
+  state.footnotePointerMove = null;
 });
 els.editor.addEventListener("paste", (event) => {
   const html = event.clipboardData?.getData("text/html") || "";

@@ -562,6 +562,8 @@ p {
   line-height: 0;
   vertical-align: super;
   cursor: grab;
+  user-select: none;
+  touch-action: none;
 }
 
 .footnote-ref:active { cursor: grabbing; }
