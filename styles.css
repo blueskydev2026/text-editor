@@ -768,3 +768,54 @@ p {
     text-align: right;
   }
 }
+
+
+.version-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(680px, calc(100vh - 32px));
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink);
+  direction: rtl;
+}
+
+.version-dialog::backdrop {
+  background: rgba(20, 31, 27, 0.48);
+}
+
+.version-dialog-head,
+.version-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.version-dialog-head h2 {
+  margin: 0;
+}
+
+.version-help,
+.version-empty {
+  color: var(--muted);
+}
+
+.version-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  overflow: auto;
+}
+
+.version-item {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8faf8;
+}
+
+.version-date {
+  font-weight: 700;
+}
