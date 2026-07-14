@@ -722,6 +722,10 @@ function insertFootnote() {
 }
 
 function removeFootnote(id) {
+  // Persist every currently edited note before rebuilding the pane. Without
+  // this, renderFootnotesPane() uses stale map values and discards recent edits.
+  refreshFootnoteMapFromEditor();
+  syncFootnotesFromEditor();
   if (!id || !state.footnoteMap.has(id)) return;
 
   els.editor.querySelectorAll(`.footnote-ref[data-footnote-ref="${CSS.escape(id)}"]`).forEach((ref) => ref.remove());
@@ -805,6 +809,9 @@ async function openDocx(file, fileHandle = null) {
   setStatus("קורא את קובץ Word...", "busy");
 
   const buffer = await file.arrayBuffer();
+  if (buffer.byteLength < 4) {
+    throw new Error("הקובץ ריק או פגום. אם הוא נשמר בעבר אוטומטית, נסה לשחזר גרסה קודמת דרך Word, OneDrive או היסטוריית הקבצים של Windows.");
+  }
   state.zip = await JSZip.loadAsync(buffer);
   state.fileName = file.name;
   state.openedFileHandle = fileHandle;
@@ -1507,8 +1514,11 @@ async function writeAutoSave() {
       try {
         // Do not call getFile() here. It returns a snapshot that can become stale
         // before createWritable(), which causes InvalidStateError in Chromium.
-        writable = await state.openedFileHandle.createWritable();
-        await writable.write(blob);
+        // Preserve the original until the complete replacement is ready.
+        // Chromium writes through a temporary file and commits it on close.
+        writable = await state.openedFileHandle.createWritable({ keepExistingData: true });
+        await writable.write({ type: "write", position: 0, data: blob });
+        await writable.truncate(blob.size);
         await writable.close();
         writable = null;
         saved = true;
