@@ -18,12 +18,9 @@
   isDocx: false,
   autoSaveEnabled: false,
   openedFileHandle: null,
-  autoSaveDirectoryHandle: null,
   autoSaveTimer: null,
   isAutoSaving: false,
   autoSavePending: false,
-  autoSaveRetryCount: 0,
-  autoSaveNeedsReconnect: false,
   footnotePointerMove: null,
   cutFootnoteIds: [],
   activeFootnoteId: null,
@@ -122,12 +119,9 @@ function resetDocxState() {
   state.isDocx = false;
   state.autoSaveEnabled = false;
   state.openedFileHandle = null;
-  state.autoSaveDirectoryHandle = null;
   state.autoSaveTimer = null;
   state.isAutoSaving = false;
   state.autoSavePending = false;
-  state.autoSaveRetryCount = 0;
-  state.autoSaveNeedsReconnect = false;
   state.footnotePointerMove = null;
   state.activeFootnoteId = null;
   state.isResizingFootnotes = false;
@@ -1501,10 +1495,8 @@ async function writeAutoSave() {
     let saved = false;
     for (let attempt = 0; attempt < 3 && !saved; attempt += 1) {
       try {
-        const fileHandle = state.autoSaveDirectoryHandle
-          ? await state.autoSaveDirectoryHandle.getFileHandle(state.fileName)
-          : state.openedFileHandle;
-        const writable = await fileHandle.createWritable();
+        await state.openedFileHandle.getFile();
+        const writable = await state.openedFileHandle.createWritable();
         await writable.write(blob);
         await writable.close();
         saved = true;
@@ -1513,29 +1505,17 @@ async function writeAutoSave() {
         await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
       }
     }
-    state.autoSaveRetryCount = 0;
-    state.autoSaveNeedsReconnect = false;
     setStatus("נשמר אוטומטית בקובץ המקורי", "ready");
   } catch (error) {
-    if (error.name === "InvalidStateError") {
-      state.autoSaveNeedsReconnect = true;
-      state.autoSaveRetryCount = 0;
-      els.autoSaveButton.textContent = window.showDirectoryPicker ? "בחירת תיקייה לשמירה" : "חיבור מחדש לשמירה";
-      setStatus(window.showDirectoryPicker
-        ? "יש לבחור פעם אחת את התיקייה שמכילה את קובץ Word"
-        : "הגישה לקובץ התיישנה — לחץ על חיבור מחדש לשמירה", "error");
-    } else {
-      console.error(error);
-      state.autoSaveEnabled = false;
-      state.autoSaveRetryCount = 0;
-      els.autoSaveButton.classList.remove("active");
-      els.autoSaveButton.setAttribute("aria-pressed", "false");
-      els.autoSaveButton.textContent = "שמירה אוטומטית";
-      setStatus("השמירה האוטומטית נכשלה וכובתה", "error");
-    }
+    console.error(error);
+    state.autoSaveEnabled = false;
+    els.autoSaveButton.classList.remove("active");
+    els.autoSaveButton.setAttribute("aria-pressed", "false");
+    els.autoSaveButton.textContent = "שמירה אוטומטית";
+    setStatus("השמירה האוטומטית נכשלה וכובתה", "error");
   } finally {
     state.isAutoSaving = false;
-    if (state.autoSaveEnabled && !state.autoSaveNeedsReconnect && state.autoSavePending) {
+    if (state.autoSaveEnabled && state.autoSavePending) {
       state.autoSavePending = false;
       clearTimeout(state.autoSaveTimer);
       state.autoSaveTimer = setTimeout(writeAutoSave, 250);
@@ -1544,50 +1524,12 @@ async function writeAutoSave() {
 }
 
 function scheduleAutoSave() {
-  if (!state.autoSaveEnabled || state.autoSaveNeedsReconnect) return;
+  if (!state.autoSaveEnabled) return;
   if (state.isAutoSaving) state.autoSavePending = true;
   clearTimeout(state.autoSaveTimer);
   state.autoSaveTimer = setTimeout(() => {
     writeAutoSave();
   }, 1600);
-}
-
-async function reconnectAutoSaveHandle() {
-  if (window.showDirectoryPicker) {
-    const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-    let fileHandle;
-    try {
-      fileHandle = await directoryHandle.getFileHandle(state.fileName);
-    } catch (error) {
-      if (error.name === "NotFoundError") {
-        setStatus(`בתיקייה שנבחרה לא נמצא הקובץ ${state.fileName}`, "error");
-        return;
-      }
-      throw error;
-    }
-    state.autoSaveDirectoryHandle = directoryHandle;
-    state.openedFileHandle = fileHandle;
-  } else {
-    if (!window.showOpenFilePicker) return;
-  const [fileHandle] = await window.showOpenFilePicker({
-    multiple: false,
-    types: [{
-      description: "Word document",
-      accept: { "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"] },
-    }],
-  });
-  const file = await fileHandle.getFile();
-  if (file.name !== state.fileName) {
-    setStatus(`יש לבחור מחדש את הקובץ ${state.fileName}`, "error");
-    return;
-  }
-  state.openedFileHandle = fileHandle;
-  }
-  state.autoSaveNeedsReconnect = false;
-  state.autoSaveRetryCount = 0;
-  els.autoSaveButton.textContent = "שמירה אוטומטית פעילה";
-  setStatus("הגישה לקובץ חוברה מחדש — שומר כעת", "busy");
-  await writeAutoSave();
 }
 
 async function toggleAutoSave() {
@@ -1596,16 +1538,9 @@ async function toggleAutoSave() {
     return;
   }
 
-  if (state.autoSaveNeedsReconnect) {
-    await reconnectAutoSaveHandle();
-    return;
-  }
-
   if (state.autoSaveEnabled) {
     clearTimeout(state.autoSaveTimer);
     state.autoSaveEnabled = false;
-    state.autoSaveRetryCount = 0;
-    state.autoSaveNeedsReconnect = false;
     els.autoSaveButton.classList.remove("active");
     els.autoSaveButton.setAttribute("aria-pressed", "false");
     els.autoSaveButton.textContent = "שמירה אוטומטית";
@@ -2207,6 +2142,12 @@ function isInsertFootnoteShortcut(event) {
 }
 
 function setupInstallPrompt() {
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    state.deferredInstallPrompt = event;
+    els.installAppButton.hidden = false;
+  });
+
   window.addEventListener("appinstalled", () => {
     state.deferredInstallPrompt = null;
     els.installAppButton.hidden = true;
