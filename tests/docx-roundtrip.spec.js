@@ -177,31 +177,41 @@ test("autosave persists body, footnote text and reference position", async ({ pa
   expect(await page.locator("#autoSaveButton").getAttribute("aria-pressed")).toBe("true");
 });
 
-test("autosave stays enabled and recovers from repeated InvalidStateError failures", async ({ page }) => {
+test("autosave reconnects a stale file handle without losing edits", async ({ page }) => {
   const fixture = await makeDocxFixture();
   const base64 = fixture.toString("base64");
   await page.addInitScript(({ base64 }) => {
     const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
     const file = new File([bytes], "retry.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-    window.__retryAttempts = 0;
+    window.__pickerCalls = 0;
     window.__retryWrites = 0;
-    window.showOpenFilePicker = async () => [{
+    const staleHandle = {
       getFile: async () => file,
-      createWritable: async () => {
-        window.__retryAttempts += 1;
-        if (window.__retryAttempts <= 4) throw new DOMException("changed on disk", "InvalidStateError");
-        return {
+      createWritable: async () => { throw new DOMException("changed on disk", "InvalidStateError"); },
+    };
+    const freshHandle = {
+      getFile: async () => file,
+      createWritable: async () => ({
           write: async () => { window.__retryWrites += 1; },
           close: async () => {},
-        };
-      },
-    }];
+      }),
+    };
+    window.showOpenFilePicker = async () => {
+      window.__pickerCalls += 1;
+      return [window.__pickerCalls === 1 ? staleHandle : freshHandle];
+    };
   }, { base64 });
 
   await page.goto("/");
   await page.locator("#openFileButton").click();
   await page.locator("#autoSaveButton").click();
   await expect(page.locator("#autoSaveButton")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#autoSaveButton")).toHaveText("חיבור מחדש לשמירה");
+  await page.locator("#editor .docx-run").first().evaluate((run) => {
+    run.textContent = "שינוי שנשמר אחרי חיבור מחדש";
+    run.closest("#editor").dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  });
+  await page.locator("#autoSaveButton").click();
   await expect.poll(() => page.evaluate(() => window.__retryWrites), { timeout: 5000 }).toBeGreaterThan(0);
   await expect(page.locator("#saveState")).toHaveText("נשמר אוטומטית בקובץ המקורי");
   await expect(page.locator("#autoSaveButton")).toHaveAttribute("aria-pressed", "true");
