@@ -22,6 +22,7 @@
   isAutoSaving: false,
   autoSavePending: false,
   footnotePointerMove: null,
+  cutFootnoteIds: [],
   activeFootnoteId: null,
   isResizingFootnotes: false,
   isDraggingDocumentPosition: false,
@@ -2362,12 +2363,32 @@ function caretRangeAtPoint(x, y) {
   return range;
 }
 
-function moveFootnoteReferenceToPoint(id, x, y) {
-  const range = caretRangeAtPoint(x, y);
+function describeFootnoteMoveTarget(range) {
   const targetNode = range?.startContainer?.nodeType === Node.TEXT_NODE ? range.startContainer.parentElement : range?.startContainer;
   const targetBlock = targetNode?.closest?.(".docx-paragraph, p, h1, h2, h3");
-  if (!range || !targetBlock || !els.editor.contains(targetBlock)) return false;
+  if (!range || !targetBlock || !els.editor.contains(targetBlock) || targetNode.closest?.(".footnote-ref")) return null;
   const targetRun = targetNode.closest?.(".docx-run[data-text-id]");
+  return {
+    block: targetBlock,
+    textId: targetRun?.dataset.textId || null,
+    offset: targetRun ? textOffsetInRun(range, targetRun) : null,
+  };
+}
+
+function rangeFromFootnoteMoveTarget(target) {
+  if (!target?.textId) return null;
+  const run = els.editor.querySelector(`.docx-run[data-text-id="${CSS.escape(target.textId)}"]`);
+  if (!run) return null;
+  const range = document.createRange();
+  const textNode = run.firstChild || run.appendChild(document.createTextNode(""));
+  range.setStart(textNode, Math.min(target.offset, textNode.textContent.length));
+  range.collapse(true);
+  return { range, run };
+}
+
+function moveFootnoteReferenceToRange(id, destinationRange) {
+  const target = describeFootnoteMoveTarget(destinationRange);
+  if (!target || !state.footnoteMap.has(id)) return false;
 
   Array.from(qName(state.documentXml, "footnoteReference"))
     .filter((reference) => attr(reference, "id") === id)
@@ -2378,13 +2399,29 @@ function moveFootnoteReferenceToPoint(id, x, y) {
     });
   els.editor.querySelectorAll(`.footnote-ref[data-footnote-ref="${CSS.escape(id)}"]`).forEach((ref) => ref.remove());
 
-  const inserted = targetRun
-    ? insertReferenceIntoDocxRun(range, targetRun, id)
-    : appendReferenceToDocxParagraph(targetBlock, id);
+  const restored = rangeFromFootnoteMoveTarget(target);
+  const inserted = restored
+    ? insertReferenceIntoDocxRun(restored.range, restored.run, id)
+    : appendReferenceToDocxParagraph(target.block, id);
   if (!inserted) return false;
   setActiveFootnote(id, false);
   markDocumentDirty();
   return true;
+}
+
+function moveFootnoteReferenceToPoint(id, x, y) {
+  const range = caretRangeAtPoint(x, y);
+  return range ? moveFootnoteReferenceToRange(id, range) : false;
+}
+
+function selectedFootnoteReferences() {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return [];
+  const range = selection.getRangeAt(0);
+  return Array.from(els.editor.querySelectorAll(".footnote-ref[data-footnote-ref]"))
+    .filter((ref) => {
+      try { return range.intersectsNode(ref); } catch (_) { return false; }
+    });
 }
 
 els.editor.addEventListener("dragstart", (event) => {
@@ -2412,8 +2449,37 @@ els.editor.addEventListener("pointerup", (event) => {
 els.editor.addEventListener("pointercancel", () => {
   state.footnotePointerMove = null;
 });
+els.editor.addEventListener("cut", (event) => {
+  const refs = selectedFootnoteReferences();
+  if (!refs.length || !event.clipboardData) return;
+  event.preventDefault();
+  const ids = refs.map((ref) => ref.dataset.footnoteRef);
+  event.clipboardData.setData("application/x-hebrew-editor-footnotes", JSON.stringify(ids));
+  event.clipboardData.setData("text/html", ids.map((id) => `<sup data-hebrew-editor-footnote="${escapeHtml(id)}">${escapeHtml(id)}</sup>`).join(""));
+  event.clipboardData.setData("text/plain", ids.join(" "));
+  state.cutFootnoteIds = ids;
+  refs.forEach((ref) => ref.remove());
+});
 els.editor.addEventListener("paste", (event) => {
   const html = event.clipboardData?.getData("text/html") || "";
+  let movedIds = [];
+  try {
+    movedIds = JSON.parse(event.clipboardData?.getData("application/x-hebrew-editor-footnotes") || "[]");
+  } catch (_) { movedIds = []; }
+  if (!movedIds.length && /data-hebrew-editor-footnote/i.test(html)) {
+    const clipboardDoc = parser.parseFromString(html, "text/html");
+    movedIds = Array.from(clipboardDoc.querySelectorAll("[data-hebrew-editor-footnote]"))
+      .map((node) => node.getAttribute("data-hebrew-editor-footnote"));
+  }
+  if (movedIds.length) {
+    event.preventDefault();
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+    const moved = range && movedIds.every((id) => moveFootnoteReferenceToRange(String(id), range));
+    state.cutFootnoteIds = [];
+    setStatus(moved ? "הפניית ההערה הועברה" : "לא ניתן להעביר את הפניית ההערה למיקום הזה", moved ? "dirty" : "error");
+    return;
+  }
   if (!html || !/mso-|MsoFootnote|MsoEndnote/i.test(html)) return;
   event.preventDefault();
   const doc = parser.parseFromString(html, "text/html");
