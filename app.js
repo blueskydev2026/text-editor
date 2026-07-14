@@ -18,6 +18,7 @@
   isDocx: false,
   autoSaveEnabled: false,
   openedFileHandle: null,
+  autoSaveDirectoryHandle: null,
   autoSaveTimer: null,
   isAutoSaving: false,
   autoSavePending: false,
@@ -121,6 +122,7 @@ function resetDocxState() {
   state.isDocx = false;
   state.autoSaveEnabled = false;
   state.openedFileHandle = null;
+  state.autoSaveDirectoryHandle = null;
   state.autoSaveTimer = null;
   state.isAutoSaving = false;
   state.autoSavePending = false;
@@ -1499,7 +1501,10 @@ async function writeAutoSave() {
     let saved = false;
     for (let attempt = 0; attempt < 3 && !saved; attempt += 1) {
       try {
-        const writable = await state.openedFileHandle.createWritable();
+        const fileHandle = state.autoSaveDirectoryHandle
+          ? await state.autoSaveDirectoryHandle.getFileHandle(state.fileName)
+          : state.openedFileHandle;
+        const writable = await fileHandle.createWritable();
         await writable.write(blob);
         await writable.close();
         saved = true;
@@ -1513,11 +1518,12 @@ async function writeAutoSave() {
     setStatus("נשמר אוטומטית בקובץ המקורי", "ready");
   } catch (error) {
     if (error.name === "InvalidStateError") {
-      console.warn("Auto-save file access became stale and must be reconnected", error);
       state.autoSaveNeedsReconnect = true;
       state.autoSaveRetryCount = 0;
-      els.autoSaveButton.textContent = "חיבור מחדש לשמירה";
-      setStatus("הגישה לקובץ התיישנה — לחץ על חיבור מחדש לשמירה", "error");
+      els.autoSaveButton.textContent = window.showDirectoryPicker ? "בחירת תיקייה לשמירה" : "חיבור מחדש לשמירה";
+      setStatus(window.showDirectoryPicker
+        ? "יש לבחור פעם אחת את התיקייה שמכילה את קובץ Word"
+        : "הגישה לקובץ התיישנה — לחץ על חיבור מחדש לשמירה", "error");
     } else {
       console.error(error);
       state.autoSaveEnabled = false;
@@ -1547,7 +1553,22 @@ function scheduleAutoSave() {
 }
 
 async function reconnectAutoSaveHandle() {
-  if (!window.showOpenFilePicker) return;
+  if (window.showDirectoryPicker) {
+    const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+    let fileHandle;
+    try {
+      fileHandle = await directoryHandle.getFileHandle(state.fileName);
+    } catch (error) {
+      if (error.name === "NotFoundError") {
+        setStatus(`בתיקייה שנבחרה לא נמצא הקובץ ${state.fileName}`, "error");
+        return;
+      }
+      throw error;
+    }
+    state.autoSaveDirectoryHandle = directoryHandle;
+    state.openedFileHandle = fileHandle;
+  } else {
+    if (!window.showOpenFilePicker) return;
   const [fileHandle] = await window.showOpenFilePicker({
     multiple: false,
     types: [{
@@ -1561,6 +1582,7 @@ async function reconnectAutoSaveHandle() {
     return;
   }
   state.openedFileHandle = fileHandle;
+  }
   state.autoSaveNeedsReconnect = false;
   state.autoSaveRetryCount = 0;
   els.autoSaveButton.textContent = "שמירה אוטומטית פעילה";
@@ -2185,12 +2207,6 @@ function isInsertFootnoteShortcut(event) {
 }
 
 function setupInstallPrompt() {
-  window.addEventListener("beforeinstallprompt", (event) => {
-    event.preventDefault();
-    state.deferredInstallPrompt = event;
-    els.installAppButton.hidden = false;
-  });
-
   window.addEventListener("appinstalled", () => {
     state.deferredInstallPrompt = null;
     els.installAppButton.hidden = true;
