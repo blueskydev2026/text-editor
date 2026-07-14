@@ -210,6 +210,38 @@ test("controlled footnote drag moves only the reference and preserves text", asy
   expect(await zip.file("word/document.xml").async("text")).toContain("פסקה ראשונה");
 });
 
+test("cut and paste moves a footnote reference without deleting its note", async ({ page }) => {
+  const fixture = await makeDocxFixture();
+  await page.goto("/");
+  await page.locator("#fileInput").setInputFiles({ name: "cut-paste.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", buffer: fixture });
+  await page.locator("#editor").evaluate((editor) => {
+    const ref = editor.querySelector(".footnote-ref");
+    const selection = window.getSelection();
+    const selected = document.createRange();
+    selected.selectNode(ref);
+    selection.removeAllRanges();
+    selection.addRange(selected);
+    const data = new DataTransfer();
+    editor.dispatchEvent(new ClipboardEvent("cut", { bubbles: true, cancelable: true, clipboardData: data }));
+
+    const targetText = editor.children[1].querySelector(".docx-run").firstChild;
+    const destination = document.createRange();
+    destination.setStart(targetText, 2);
+    destination.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(destination);
+    editor.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: data }));
+  });
+  await expect(page.locator("#editor .footnote-ref")).toHaveCount(1);
+  await expect(page.locator('[data-footnote-id="1"]')).toHaveCount(1);
+  const pending = page.waitForEvent("download");
+  await page.locator("#saveButton").click();
+  const output = await require("node:fs/promises").readFile(await (await pending).path());
+  const zip = await JSZip.loadAsync(output);
+  expect(await zip.file("word/document.xml").async("text")).toContain("footnoteReference");
+  expect(await zip.file("word/footnotes.xml").async("text")).toMatch(/<w:footnote[^>]+w:id="1"/);
+});
+
 test("drag-style paragraph duplication is normalized instead of blocking save", async ({ page }) => {
   const fixture = await makeDocxFixture();
   await page.goto("/");
