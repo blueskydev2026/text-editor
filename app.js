@@ -1,6 +1,7 @@
 ﻿const state = {
   zip: null,
   fileName: "",
+  fileDisplayPath: "",
   documentXml: null,
   footnotesXml: null,
   stylesXml: null,
@@ -106,10 +107,39 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function compactPath(value, maxLength = 72) {
+  const path = String(value || "").replace(/\//g, "\\");
+  if (path.length <= maxLength) return path;
+
+  const parts = path.split("\\").filter(Boolean);
+  if (parts.length <= 2) return `${path.slice(0, Math.max(8, maxLength - 18))}…${path.slice(-16)}`;
+
+  const fileName = parts.at(-1);
+  const root = parts[0];
+  const tail = parts.slice(-2).join("\\");
+  const compact = `${root}\\…\\${tail}`;
+  if (compact.length <= maxLength) return compact;
+
+  const roomForFile = Math.max(18, maxLength - root.length - 5);
+  return `${root}\\…\\${fileName.length > roomForFile ? `…${fileName.slice(-roomForFile)}` : fileName}`;
+}
+
+function displayPathForFile(file, fileHandle = null) {
+  return file?.webkitRelativePath || file?.relativePath || file?.path || fileHandle?.name || file?.name || "";
+}
+
+function setDocumentTitleLabel(label, fullLabel = label) {
+  els.documentName.textContent = compactPath(label || "מסמך ללא שם");
+  els.documentName.title = fullLabel || label || "";
+  els.documentName.dir = "auto";
+  document.title = `${label || "מסמך ללא שם"} - עורך טקסט עברי`;
+}
+
 function resetDocxState() {
   clearTimeout(state.autoSaveTimer);
   state.zip = null;
   state.fileName = "";
+  state.fileDisplayPath = "";
   state.documentXml = null;
   state.footnotesXml = null;
   state.stylesXml = null;
@@ -873,6 +903,7 @@ async function openDocx(file, fileHandle = null) {
   }
   state.zip = await JSZip.loadAsync(buffer);
   state.fileName = file.name;
+  state.fileDisplayPath = displayPathForFile(file, fileHandle);
   state.openedFileHandle = fileHandle;
 
   const documentEntry = state.zip.file("word/document.xml");
@@ -901,7 +932,7 @@ async function openDocx(file, fileHandle = null) {
   updateDocumentPositionSlider();
   updateDocumentStats();
   setTimeout(syncFootnoteToVisibleParagraph, 0);
-  els.documentName.textContent = file.name;
+  setDocumentTitleLabel(state.fileDisplayPath || file.name, state.fileDisplayPath || file.name);
   els.documentMeta.textContent = `${paragraphs.length} פסקאות, ${state.footnoteMap.size} הערות שוליים`;
   els.saveButton.disabled = false;
   els.autoSaveButton.disabled = !state.openedFileHandle;
@@ -1586,7 +1617,7 @@ function restoreLocalDraft() {
       });
       els.activeFootnoteLabel.textContent = state.footnoteMap.size ? `${state.footnoteMap.size} הערות` : "אין הערות במסמך";
     }
-    els.documentName.textContent = "טיוטה מקומית";
+    setDocumentTitleLabel("טיוטה מקומית");
     els.documentMeta.textContent = "נשמרת אוטומטית בדפדפן";
     setStatus("טיוטה מקומית נטענה", "ready");
     updateDocumentStats();
@@ -1869,7 +1900,7 @@ function newDocument() {
   els.activeFootnoteLabel.textContent = "אין הערות במסמך";
   buildHeadingNav();
   updateDocumentPositionSlider();
-  els.documentName.textContent = "מסמך ללא שם";
+  setDocumentTitleLabel("מסמך ללא שם");
   els.documentMeta.textContent = "תצוגה זורמת, מימין לשמאל";
   els.saveButton.disabled = true;
   updateDocumentStats();
