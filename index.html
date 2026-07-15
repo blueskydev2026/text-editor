@@ -31,6 +31,7 @@
         </label>
         <button id="newDocButton" class="button" type="button">מסמך חדש</button>
         <button id="saveButton" class="button" type="button" disabled>שמירה כ־DOCX</button>
+        <button id="validateDocumentButton" class="button" type="button" disabled>בדוק מסמך</button>
         <button id="autoSaveButton" class="button" type="button" disabled aria-pressed="false">שמירה אוטומטית</button>
         <button id="versionHistoryButton" class="button" type="button" disabled>גרסאות קודמות</button>
         <button id="installAppButton" class="button install-button" type="button" hidden>התקנה כאפליקציה</button>
@@ -121,6 +122,10 @@
             <span class="autosave-state" id="saveState">מוכן לעריכה</span>
           </div>
         </div>
+        <section id="documentHealth" class="document-health" data-tone="ready" aria-live="polite">
+          <strong id="documentHealthSummary">המסמך מוכן לבדיקה</strong>
+          <ul id="documentHealthList"></ul>
+        </section>
         <article id="editor" class="editor" contenteditable="true" spellcheck="true" aria-label="אזור עריכת הטקסט">
           <h2>מסמך חדש</h2>
           <p></p>

@@ -509,6 +509,52 @@ p {
   font-weight: 700;
 }
 
+.document-health {
+  display: grid;
+  gap: 4px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line);
+  background: #f7faf6;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.document-health strong {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.document-health[data-tone="warn"] strong {
+  color: var(--warn);
+}
+
+.document-health[data-tone="error"] strong {
+  color: #9d2626;
+}
+
+.document-health ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.document-health li::before {
+  content: "•";
+  margin-inline-end: 5px;
+}
+
+.document-health li[data-level="error"] {
+  color: #9d2626;
+  font-weight: 700;
+}
+
+.document-health li[data-level="warn"] {
+  color: var(--warn);
+}
+
 .editor {
   flex: 1 1 auto;
   min-height: 180px;

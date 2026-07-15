@@ -22,6 +22,8 @@
   autoSaveTimer: null,
   isAutoSaving: false,
   autoSavePending: false,
+  isSaving: false,
+  lastValidationIssues: [],
   footnotePointerMove: null,
   cutFootnoteIds: [],
   activeFootnoteId: null,
@@ -40,6 +42,7 @@ const els = {
   fileInput: document.querySelector("#fileInput"),
   newDocButton: document.querySelector("#newDocButton"),
   saveButton: document.querySelector("#saveButton"),
+  validateDocumentButton: document.querySelector("#validateDocumentButton"),
   autoSaveButton: document.querySelector("#autoSaveButton"),
   versionHistoryButton: document.querySelector("#versionHistoryButton"),
   versionHistoryDialog: document.querySelector("#versionHistoryDialog"),
@@ -53,6 +56,9 @@ const els = {
   documentMeta: document.querySelector("#documentMeta"),
   documentStats: document.querySelector("#documentStats"),
   saveState: document.querySelector("#saveState"),
+  documentHealth: document.querySelector("#documentHealth"),
+  documentHealthSummary: document.querySelector("#documentHealthSummary"),
+  documentHealthList: document.querySelector("#documentHealthList"),
   zoomInput: document.querySelector("#zoomInput"),
   zoomOutput: document.querySelector("#zoomOutput"),
   footnoteZoomInput: document.querySelector("#footnoteZoomInput"),
@@ -89,6 +95,68 @@ function setStatus(message, tone = "ready") {
   els.status.textContent = message;
   els.saveState.textContent = message;
   els.saveState.dataset.tone = tone;
+}
+
+function issue(level, text) {
+  return { level, text };
+}
+
+function issueTone(issues) {
+  if (issues.some((item) => item.level === "error")) return "error";
+  if (issues.some((item) => item.level === "warn")) return "warn";
+  return "ready";
+}
+
+function updateActionAvailability() {
+  const busy = state.isSaving;
+  els.openFileButton.disabled = busy;
+  els.fileInput.disabled = busy;
+  els.newDocButton.disabled = busy;
+  els.saveButton.disabled = busy || !state.isDocx;
+  els.validateDocumentButton.disabled = busy || !state.isDocx;
+  els.autoSaveButton.disabled = busy || !state.isDocx || !state.openedFileHandle;
+  els.versionHistoryButton.disabled = busy || !state.fileName;
+}
+
+function setDocumentBusy(isBusy) {
+  state.isSaving = isBusy;
+  els.editor.setAttribute("contenteditable", isBusy ? "false" : "true");
+  els.footnotesList.querySelectorAll(".footnote-body").forEach((body) => {
+    body.setAttribute("contenteditable", isBusy ? "false" : "true");
+  });
+  updateActionAvailability();
+}
+
+function showDocumentHealth(issues, source = "auto") {
+  state.lastValidationIssues = issues;
+  const tone = issueTone(issues);
+  els.documentHealth.dataset.tone = tone;
+  els.documentHealthList.innerHTML = "";
+
+  if (!state.isDocx) {
+    els.documentHealthSummary.textContent = "מסמך רגיל - בדיקת DOCX תופעל אחרי פתיחת Word";
+    return;
+  }
+
+  const errors = issues.filter((item) => item.level === "error").length;
+  const warnings = issues.filter((item) => item.level === "warn").length;
+  if (!issues.length) {
+    els.documentHealthSummary.textContent = source === "manual" ? "הבדיקה הסתיימה: לא נמצאו בעיות" : "לא נמצאו בעיות שמירה";
+    return;
+  }
+
+  els.documentHealthSummary.textContent = `${errors ? `${errors} שגיאות` : ""}${errors && warnings ? ", " : ""}${warnings ? `${warnings} אזהרות` : ""} במסמך`;
+  issues.slice(0, 5).forEach((item) => {
+    const row = document.createElement("li");
+    row.dataset.level = item.level;
+    row.textContent = item.text;
+    els.documentHealthList.append(row);
+  });
+  if (issues.length > 5) {
+    const row = document.createElement("li");
+    row.textContent = `ועוד ${issues.length - 5} בעיות נוספות`;
+    els.documentHealthList.append(row);
+  }
 }
 
 function qName(node, localName) {
@@ -160,6 +228,8 @@ function resetDocxState() {
   state.autoSaveTimer = null;
   state.isAutoSaving = false;
   state.autoSavePending = false;
+  state.isSaving = false;
+  state.lastValidationIssues = [];
   state.footnotePointerMove = null;
   state.activeFootnoteId = null;
   state.isResizingFootnotes = false;
@@ -180,12 +250,14 @@ function resetDocxState() {
   els.toggleFootnotesButton.setAttribute("aria-pressed", "true");
   els.toggleFootnotesButton.textContent = "הסתר חלונית";
   if (els.versionHistoryButton) els.versionHistoryButton.disabled = true;
+  if (els.validateDocumentButton) els.validateDocumentButton.disabled = true;
   if (els.autoSaveButton) {
     els.autoSaveButton.disabled = true;
     els.autoSaveButton.classList.remove("active");
     els.autoSaveButton.setAttribute("aria-pressed", "false");
     els.autoSaveButton.textContent = "שמירה אוטומטית";
   }
+  showDocumentHealth([]);
 }
 
 function parseXml(xmlText) {
@@ -934,10 +1006,9 @@ async function openDocx(file, fileHandle = null) {
   setTimeout(syncFootnoteToVisibleParagraph, 0);
   setDocumentTitleLabel(state.fileDisplayPath || file.name, state.fileDisplayPath || file.name);
   els.documentMeta.textContent = `${paragraphs.length} פסקאות, ${state.footnoteMap.size} הערות שוליים`;
-  els.saveButton.disabled = false;
-  els.autoSaveButton.disabled = !state.openedFileHandle;
-  els.versionHistoryButton.disabled = false;
   state.isDocx = true;
+  updateActionAvailability();
+  validateDocument();
   setStatus(state.openedFileHandle ? "המסמך פתוח לעריכה עם הרשאת שמירה" : "המסמך פתוח לעריכה ללא הרשאת שמירה לקובץ המקורי", "ready");
 }
 
@@ -1741,9 +1812,97 @@ async function preserveCurrentFileVersion() {
   await storeDocumentVersion(detachedBlob, state.fileName);
 }
 
+function collectDocumentIssues() {
+  const issues = [];
+  if (!state.isDocx) return issues;
+
+  if (!state.zip || !state.documentXml) {
+    issues.push(issue("error", "לא נמצא מבנה DOCX תקין לשמירה."));
+    return issues;
+  }
+
+  const blocks = editorParagraphBlocks();
+  if (!blocks.length) {
+    issues.push(issue("warn", "המסמך אינו מכיל פסקאות עריכה."));
+  }
+
+  const mappedBlocks = [];
+  const seenParagraphIndexes = new Map();
+  blocks.forEach((block, visibleIndex) => {
+    const rawIndex = block.dataset.paragraphIndex;
+    if (rawIndex === undefined) return;
+    const index = Number(rawIndex);
+    if (!Number.isInteger(index) || !state.paragraphNodes[index]) {
+      issues.push(issue("error", `פסקה ${visibleIndex + 1} איבדה את הקישור לפסקת Word המקורית.`));
+      return;
+    }
+    if (seenParagraphIndexes.has(rawIndex)) {
+      issues.push(issue("warn", `פסקה ${visibleIndex + 1} נראית כעותק של פסקה קיימת ותישמר כפסקה חדשה.`));
+    } else {
+      seenParagraphIndexes.set(rawIndex, visibleIndex);
+      mappedBlocks.push({ block, index, visibleIndex });
+    }
+  });
+
+  for (let i = 1; i < mappedBlocks.length; i += 1) {
+    if (mappedBlocks[i].index < mappedBlocks[i - 1].index) {
+      issues.push(issue("error", "שינוי סדר פסקאות עדיין אינו נתמך. החזר את הפסקאות לסדר המקורי לפני שמירה."));
+      break;
+    }
+  }
+
+  const editorReferences = Array.from(els.editor.querySelectorAll(".footnote-ref[data-footnote-ref]"));
+  const referenceIds = new Set();
+  editorReferences.forEach((ref) => {
+    const id = ref.dataset.footnoteRef;
+    if (!id) {
+      issues.push(issue("error", "נמצאה הפניה להערת שוליים ללא מספר."));
+      return;
+    }
+    referenceIds.add(id);
+    if (!state.footnoteMap.has(id) && !els.footnotesList.querySelector(`[data-footnote-id="${CSS.escape(id)}"]`)) {
+      issues.push(issue("error", `הפניה להערת שוליים ${id} אינה מצביעה על הערה קיימת.`));
+    }
+    if (!ref.closest(".docx-paragraph, p, h1, h2, h3")) {
+      issues.push(issue("error", `הפניה להערת שוליים ${id} אינה נמצאת בתוך פסקה תקינה.`));
+    }
+  });
+
+  els.footnotesList.querySelectorAll(".footnote-card[data-footnote-id]").forEach((card) => {
+    const id = card.dataset.footnoteId;
+    if (!referenceIds.has(id)) {
+      issues.push(issue("warn", `הערת שוליים ${id} אינה מופיעה בגוף המסמך ותוסר בשמירה.`));
+    }
+    if (!visibleFootnoteText(card)) {
+      issues.push(issue("warn", `הערת שוליים ${id} ריקה.`));
+    }
+  });
+
+  if (els.editor.querySelector("script, style, iframe, object, embed")) {
+    issues.push(issue("error", "נמצא תוכן HTML שאינו בטוח בתוך המסמך."));
+  }
+
+  return issues;
+}
+
+function validateDocument({ showSuccess = false, blockOnError = false } = {}) {
+  refreshFootnoteMapFromEditor();
+  const issues = collectDocumentIssues();
+  showDocumentHealth(issues, showSuccess ? "manual" : "auto");
+  const errors = issues.filter((item) => item.level === "error");
+  if (errors.length && blockOnError) {
+    throw new Error(errors[0].text);
+  }
+  if (showSuccess) {
+    setStatus(errors.length ? "בדיקת המסמך מצאה בעיות שמונעות שמירה" : "בדיקת המסמך הסתיימה", errors.length ? "error" : "ready");
+  }
+  return issues;
+}
+
 async function createDocxBlob() {
   if (!state.zip || !state.documentXml) return;
 
+  validateDocument({ blockOnError: true });
   updateXmlFromEditor();
   syncParagraphStructureFromEditor();
   syncFootnoteReferencePositions();
@@ -1770,13 +1929,20 @@ async function createDocxBlob() {
 
 async function saveDocx() {
   if (!state.zip || !state.documentXml) return;
+  if (state.isSaving) return;
 
-  setStatus("שומר DOCX...", "busy");
-  const blob = await createDocxBlob();
+  setDocumentBusy(true);
+  try {
+    setStatus("שומר DOCX...", "busy");
+    const blob = await createDocxBlob();
 
-  const cleanName = state.fileName.replace(/\.docx$/i, "");
-  downloadBlob(blob, `${cleanName}-edited.docx`);
-  setStatus("המסמך נשמר כקובץ חדש", "ready");
+    const cleanName = state.fileName.replace(/\.docx$/i, "");
+    downloadBlob(blob, `${cleanName}-edited.docx`);
+    showDocumentHealth([], "manual");
+    setStatus("המסמך נשמר כקובץ חדש", "ready");
+  } finally {
+    setDocumentBusy(false);
+  }
 }
 
 async function writeAutoSave() {
@@ -1801,8 +1967,8 @@ async function writeAutoSave() {
         // Preserve the original until the complete replacement is ready.
         // Chromium writes through a temporary file and commits it on close.
         writable = await state.openedFileHandle.createWritable({ keepExistingData: true });
-        await writable.write({ type: "write", position: 0, data: blob });
-        await writable.truncate(blob.size);
+        await writable.write(blob);
+        if (writable.truncate) await writable.truncate(blob.size);
         await writable.close();
         writable = null;
         saved = true;
@@ -1818,6 +1984,7 @@ async function writeAutoSave() {
         await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
       }
     }
+    showDocumentHealth([], "auto");
     setStatus("נשמר אוטומטית בקובץ המקורי", "ready");
   } catch (error) {
     console.error(error);
@@ -1838,7 +2005,7 @@ async function writeAutoSave() {
 
 function scheduleAutoSave() {
   if (!state.autoSaveEnabled) return;
-  if (state.isAutoSaving) state.autoSavePending = true;
+  if (state.isAutoSaving || state.isSaving) state.autoSavePending = true;
   clearTimeout(state.autoSaveTimer);
   state.autoSaveTimer = setTimeout(() => {
     writeAutoSave();
@@ -1867,9 +2034,13 @@ async function toggleAutoSave() {
   }
 
   try {
-    const permission = await state.openedFileHandle.queryPermission({ mode: "readwrite" });
+    const permission = state.openedFileHandle.queryPermission
+      ? await state.openedFileHandle.queryPermission({ mode: "readwrite" })
+      : "granted";
     const granted = permission === "granted"
-      || await state.openedFileHandle.requestPermission({ mode: "readwrite" }) === "granted";
+      || (state.openedFileHandle.requestPermission
+        ? await state.openedFileHandle.requestPermission({ mode: "readwrite" }) === "granted"
+        : true);
     if (!granted) {
       setStatus("נדרשת הרשאת כתיבה כדי להפעיל שמירה אוטומטית", "error");
       return;
@@ -1902,8 +2073,9 @@ function newDocument() {
   updateDocumentPositionSlider();
   setDocumentTitleLabel("מסמך ללא שם");
   els.documentMeta.textContent = "תצוגה זורמת, מימין לשמאל";
-  els.saveButton.disabled = true;
+  updateActionAvailability();
   updateDocumentStats();
+  showDocumentHealth([]);
   setStatus("מסמך חדש מוכן לעריכה", "ready");
 }
 
@@ -2328,6 +2500,7 @@ function markDocumentDirty() {
   updateDocumentPositionSlider();
   updateDocumentStats();
   saveLocalDraft();
+  if (state.isDocx) validateDocument();
   setStatus(state.isDocx ? "יש שינויים שלא נשמרו" : "נערך", "dirty");
   scheduleAutoSave();
 }
@@ -2728,6 +2901,14 @@ els.saveButton.addEventListener("click", () => {
     setStatus("השמירה נכשלה. כדאי לנסות שוב או לשמור עותק מהטקסט.", "error");
   });
 });
+els.validateDocumentButton.addEventListener("click", () => {
+  try {
+    validateDocument({ showSuccess: true });
+  } catch (error) {
+    console.error(error);
+    setStatus("בדיקת המסמך נכשלה", "error");
+  }
+});
 els.autoSaveButton.addEventListener("click", () => {
   toggleAutoSave().catch((error) => {
     console.error(error);
@@ -2895,6 +3076,183 @@ function moveFootnoteReferenceToPoint(id, x, y) {
   return range ? moveFootnoteReferenceToRange(id, range) : false;
 }
 
+function normalizeExternalFootnoteKey(value) {
+  return String(value || "").replace(/^#/, "").replace(/^_/, "").toLowerCase();
+}
+
+function cleanPastedFootnoteText(html) {
+  const doc = parser.parseFromString(`<div>${html}</div>`, "text/html");
+  doc.querySelectorAll("script, style, iframe, object, embed, meta, link").forEach((node) => node.remove());
+  doc.querySelectorAll('a[href^="#_ftn"], a[href^="#_edn"], a[href^="#ftn"], a[href^="#edn"], [style*="mso-element:footnote-continuation-separator" i]').forEach((node) => node.remove());
+  const text = doc.body.textContent
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.replace(/^\s*\d+\s*/, "") || "הערה מודבקת";
+}
+
+function extractExternalFootnotes(doc) {
+  const notes = new Map();
+  doc.querySelectorAll('[style*="mso-element:footnote" i], [style*="mso-element:endnote" i], .MsoFootnoteText, .MsoEndnoteText, [id^="ftn"], [id^="edn"]').forEach((node) => {
+    const container = node.closest('[id^="ftn"], [id^="edn"]') || node;
+    const key = normalizeExternalFootnoteKey(container.id || node.id);
+    if (!key || notes.has(key)) return;
+
+    const clone = container.cloneNode(true);
+    clone.querySelectorAll('a[href^="#_ftn"], a[href^="#_edn"], [style*="mso-element:footnote-continuation-separator" i]').forEach((child) => child.remove());
+    notes.set(key, cleanPastedFootnoteText(clone.innerHTML));
+  });
+  return notes;
+}
+
+function addImportedFootnote(id, text) {
+  if (state.isDocx && state.documentXml) {
+    addFootnoteXml(id, text);
+  } else {
+    state.footnoteMap.set(id, escapeHtml(text));
+  }
+}
+
+function importedFootnoteToken(id) {
+  return `[[HEBREW_EDITOR_IMPORTED_FOOTNOTE_${id}]]`;
+}
+
+function convertExternalFootnoteReferences(doc, notes) {
+  const imported = [];
+  let nextId = Number(nextFootnoteId());
+  doc.querySelectorAll('a[href^="#_ftn"], a[href^="#_edn"], a[href^="#ftn"], a[href^="#edn"]').forEach((link) => {
+    const key = normalizeExternalFootnoteKey(link.getAttribute("href"));
+    const text = notes.get(key);
+    if (!text) {
+      link.remove();
+      return;
+    }
+
+    const id = String(nextId);
+    nextId += 1;
+    link.replaceWith(doc.createTextNode(importedFootnoteToken(id)));
+    imported.push({ id, text });
+  });
+  return imported;
+}
+
+function removeExternalFootnoteBodies(doc) {
+  doc.querySelectorAll('[style*="mso-element:footnote" i], [style*="mso-element:endnote" i], .MsoFootnoteText, .MsoEndnoteText, [id^="ftn"], [id^="edn"]').forEach((node) => {
+    const container = node.closest('[id^="ftn"], [id^="edn"]') || node;
+    container.remove();
+  });
+}
+
+function cleanPastedHtml(html, options = {}) {
+  const preserveExternalFootnoteRefs = options.preserveExternalFootnoteRefs ?? false;
+  const doc = parser.parseFromString(html, "text/html");
+  doc.querySelectorAll("script, style, iframe, object, embed, meta, link").forEach((node) => node.remove());
+  doc.querySelectorAll('[style*="mso-element:footnote" i], [style*="mso-element:endnote" i], .MsoFootnoteText, .MsoEndnoteText, [id^="ftn"], [id^="edn"]').forEach((node) => node.remove());
+  if (!preserveExternalFootnoteRefs) {
+    doc.querySelectorAll('a[href^="#_ftn"], a[href^="#_edn"], a[href^="#ftn"], a[href^="#edn"]').forEach((node) => node.remove());
+  }
+
+  const allowedTags = new Set(["P", "DIV", "BR", "STRONG", "B", "EM", "I", "U", "OL", "UL", "LI", "H1", "H2", "H3", "SPAN", "SUP"]);
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+
+  nodes.forEach((node) => {
+    if (!allowedTags.has(node.tagName)) {
+      node.replaceWith(...Array.from(node.childNodes));
+      return;
+    }
+
+    const textAlign = node.style?.textAlign;
+    const footnoteRef = node.dataset?.footnoteRef || "";
+    const importedFootnote = node.dataset?.importedFootnote || "";
+    const className = node.classList?.contains("footnote-ref") ? "footnote-ref" : "";
+    Array.from(node.attributes).forEach((attribute) => node.removeAttribute(attribute.name));
+    if (className) {
+      node.className = className;
+      node.contentEditable = "false";
+      node.draggable = false;
+    }
+    if (footnoteRef) node.dataset.footnoteRef = footnoteRef;
+    if (importedFootnote) node.dataset.importedFootnote = importedFootnote;
+    if (textAlign && ["right", "left", "center", "justify"].includes(textAlign.toLowerCase())) {
+      node.style.textAlign = textAlign.toLowerCase();
+    }
+    if (node.tagName === "SPAN" && !node.textContent.trim()) node.remove();
+  });
+
+  doc.body.querySelectorAll("div").forEach((node) => {
+    const paragraph = doc.createElement("p");
+    paragraph.innerHTML = node.innerHTML;
+    if (node.getAttribute("style")) paragraph.setAttribute("style", node.getAttribute("style"));
+    node.replaceWith(paragraph);
+  });
+
+  return doc.body.innerHTML.trim();
+}
+
+function replaceImportedFootnoteTokens(importedFootnotes) {
+  const expected = new Set(importedFootnotes.map((note) => String(note.id)));
+  const walker = document.createTreeWalker(els.editor, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+  textNodes.forEach((node) => {
+    const value = node.textContent;
+    if (!value.includes("[[HEBREW_EDITOR_IMPORTED_FOOTNOTE_")) return;
+
+    const fragment = document.createDocumentFragment();
+    const pattern = /\[\[HEBREW_EDITOR_IMPORTED_FOOTNOTE_(\d+)\]\]/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(value))) {
+      if (match.index > lastIndex) {
+        fragment.append(document.createTextNode(value.slice(lastIndex, match.index)));
+      }
+      const id = match[1];
+      fragment.append(expected.has(id) ? createFootnoteRefElement(id) : document.createTextNode(match[0]));
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < value.length) {
+      fragment.append(document.createTextNode(value.slice(lastIndex)));
+    }
+    node.replaceWith(fragment);
+  });
+}
+
+function insertCleanPaste(event) {
+  const html = event.clipboardData?.getData("text/html") || "";
+  const text = event.clipboardData?.getData("text/plain") || "";
+  if (!html && !text) return false;
+
+  event.preventDefault();
+  let importedFootnotes = [];
+  if (html) {
+    const doc = parser.parseFromString(html, "text/html");
+    const externalNotes = extractExternalFootnotes(doc);
+    importedFootnotes = convertExternalFootnoteReferences(doc, externalNotes);
+    removeExternalFootnoteBodies(doc);
+    const cleanHtml = cleanPastedHtml(doc.body.innerHTML, { preserveExternalFootnoteRefs: true });
+    if (cleanHtml) document.execCommand("insertHTML", false, cleanHtml);
+    if (importedFootnotes.length) replaceImportedFootnoteTokens(importedFootnotes);
+  } else {
+    document.execCommand("insertText", false, text);
+  }
+  if (importedFootnotes.length) {
+    importedFootnotes.forEach((note) => addImportedFootnote(note.id, note.text));
+    renderFootnotesPane(false);
+    els.footnotesPane.hidden = false;
+    els.toggleFootnotesButton.classList.add("active");
+    els.toggleFootnotesButton.setAttribute("aria-pressed", "true");
+    els.toggleFootnotesButton.textContent = "הסתר חלונית";
+    setActiveFootnote(importedFootnotes.at(-1).id, false);
+  }
+  markDocumentDirty();
+  if (importedFootnotes.length) {
+    setStatus(`יובאו ${importedFootnotes.length} הערות שוליים מההדבקה`, "dirty");
+  }
+  return true;
+}
+
 function selectedFootnoteReferences() {
   const selection = window.getSelection();
   if (!selection?.rangeCount) return [];
@@ -2961,13 +3319,7 @@ els.editor.addEventListener("paste", (event) => {
     setStatus(moved ? "הפניית ההערה הועברה" : "לא ניתן להעביר את הפניית ההערה למיקום הזה", moved ? "dirty" : "error");
     return;
   }
-  if (!html || !/mso-|MsoFootnote|MsoEndnote/i.test(html)) return;
-  event.preventDefault();
-  const doc = parser.parseFromString(html, "text/html");
-  doc.querySelectorAll('[style*="mso-element:footnote" i], [style*="mso-element:endnote" i], .MsoFootnoteText, .MsoEndnoteText, [id^="ftn"], [id^="edn"]').forEach((node) => node.remove());
-  doc.querySelectorAll('a[href^="#_ftn"], a[href^="#_edn"]').forEach((node) => node.remove());
-  document.execCommand("insertHTML", false, doc.body.innerHTML);
-  markDocumentDirty();
+  insertCleanPaste(event);
 });
 els.footnotesList.addEventListener("beforeinput", captureEditBeforeInput);
 els.footnotesList.addEventListener("input", updateFootnoteMapFromInput);
