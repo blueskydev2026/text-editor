@@ -380,6 +380,42 @@ function removeWordChildren(parent, localName) {
   Array.from(qName(parent, localName)).forEach((node) => node.remove());
 }
 
+function normalizeTrackedChanges(root) {
+  if (!root) return;
+
+  const removedRevisionNodes = new Set(["del", "delText", "moveFrom"]);
+  const acceptedRevisionNodes = new Set(["ins", "moveTo"]);
+  const markerNodes = new Set([
+    "delInstrText",
+    "moveFromRangeStart",
+    "moveFromRangeEnd",
+    "moveToRangeStart",
+    "moveToRangeEnd",
+  ]);
+
+  function visit(node) {
+    Array.from(node.childNodes).forEach(visit);
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    if (removedRevisionNodes.has(node.localName) || markerNodes.has(node.localName)) {
+      node.remove();
+      return;
+    }
+
+    if (acceptedRevisionNodes.has(node.localName)) {
+      const parent = node.parentNode;
+      if (!parent) return;
+
+      while (node.firstChild) {
+        parent.insertBefore(node.firstChild, node);
+      }
+      node.remove();
+    }
+  }
+
+  visit(root);
+}
+
 function setRunBold(run, shouldBold) {
   if (!run) return;
 
@@ -849,6 +885,8 @@ async function openDocx(file, fileHandle = null) {
   state.footnotesXml = footnotesEntry ? parseXml(await footnotesEntry.async("text")) : null;
   const stylesEntry = state.zip.file("word/styles.xml");
   state.stylesXml = stylesEntry ? parseXml(await stylesEntry.async("text")) : null;
+  normalizeTrackedChanges(state.documentXml);
+  normalizeTrackedChanges(state.footnotesXml);
   buildParagraphStyleMap();
   buildFootnoteMap();
 
@@ -1122,25 +1160,100 @@ function ensureFootnoteStylesForWord() {
   ensureFootnoteReferenceStyle();
 }
 
+function createPlainTextRun(doc, text) {
+  const run = doc.createElementNS(wordNs, "w:r");
+  setRunRtl(run, true);
+
+  const textNode = doc.createElementNS(wordNs, "w:t");
+  textNode.textContent = text;
+  setTextSpacePreserve(textNode, text);
+  run.append(textNode);
+  return { run, textNode };
+}
+
+function visibleRunFromSpan(runSpan) {
+  const text = runSpan.textContent;
+  if (!text) return null;
+
+  const xmlTextNode = state.textNodes.get(runSpan.dataset.textId);
+  const sourceRun = xmlTextNode?.parentNode;
+  const shouldBold = runSpan.dataset.bold === "true";
+  if (!sourceRun) return createPlainTextRun(state.documentXml, text);
+
+  const cloned = cloneRunWithText(sourceRun, text, shouldBold);
+  if (runSpan.dataset.boldDirty === "true" || runSpan.dataset.bold !== runSpan.dataset.originalBold) {
+    runSpan.dataset.originalBold = runSpan.dataset.bold;
+    delete runSpan.dataset.boldDirty;
+  }
+  return cloned;
+}
+
+function appendVisibleNodeRuns(node, fragment, newTextNodes) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    if (!node.textContent) return;
+    const { run, textNode } = createPlainTextRun(state.documentXml, node.textContent);
+    const textId = `t-${state.nextTextId++}`;
+    newTextNodes.set(textId, textNode);
+    fragment.append(run);
+    return;
+  }
+
+  if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+  if (node.classList.contains("docx-run")) {
+    const visibleRun = visibleRunFromSpan(node);
+    if (!visibleRun) return;
+
+    const textId = `t-${state.nextTextId++}`;
+    newTextNodes.set(textId, visibleRun.textNode);
+    node.dataset.textId = textId;
+    fragment.append(visibleRun.run);
+    return;
+  }
+
+  if (node.classList.contains("footnote-ref")) {
+    const id = node.dataset.footnoteRef || node.textContent.trim();
+    if (id) fragment.append(createFootnoteReferenceRun(id));
+    return;
+  }
+
+  if (node.localName === "br") {
+    const run = createWordElement("r");
+    run.append(createWordElement("br"));
+    fragment.append(run);
+    return;
+  }
+
+  Array.from(node.childNodes).forEach((child) => appendVisibleNodeRuns(child, fragment, newTextNodes));
+}
+
+function rebuildParagraphRunsFromEditor() {
+  if (!state.documentXml) return;
+
+  const newTextNodes = new Map();
+  els.editor.querySelectorAll("[data-paragraph-index]").forEach((block) => {
+    const paragraphIndex = Number(block.dataset.paragraphIndex);
+    const paragraph = Number.isInteger(paragraphIndex) ? state.paragraphNodes[paragraphIndex] : null;
+    if (!paragraph) return;
+
+    const fragment = state.documentXml.createDocumentFragment();
+    Array.from(block.childNodes).forEach((node) => appendVisibleNodeRuns(node, fragment, newTextNodes));
+
+    Array.from(paragraph.childNodes).forEach((child) => {
+      if (child.nodeType === Node.ELEMENT_NODE && child.localName === "pPr") return;
+      child.remove();
+    });
+    paragraph.append(fragment);
+  });
+
+  state.textNodes = newTextNodes;
+}
+
 function updateXmlFromEditor() {
   if (state.isDocx) syncNativeBoldMarkupFromEditor();
-
-  state.textNodes.forEach((xmlNode, id) => {
-    const htmlNode = els.editor.querySelector(`[data-text-id="${CSS.escape(id)}"]`);
-    if (htmlNode) {
-      xmlNode.textContent = htmlNode.textContent;
-      setTextSpacePreserve(xmlNode, htmlNode.textContent);
-      if (htmlNode.dataset.boldDirty === "true" || htmlNode.dataset.bold !== htmlNode.dataset.originalBold) {
-        setRunBold(xmlNode.parentNode, htmlNode.dataset.bold === "true");
-        htmlNode.dataset.originalBold = htmlNode.dataset.bold;
-        delete htmlNode.dataset.boldDirty;
-      }
-    } else if (xmlNode.isConnected) {
-      const run = xmlNode.parentNode;
-      xmlNode.remove();
-      if (run?.localName === "r" && !qName(run, "t").length && !qName(run, "footnoteReference").length) run.remove();
-    }
-  });
+  normalizeTrackedChanges(state.documentXml);
+  normalizeTrackedChanges(state.footnotesXml);
+  rebuildParagraphRunsFromEditor();
 
   syncParagraphFormattingFromEditor();
   syncFootnotesFromEditor();
