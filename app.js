@@ -1954,6 +1954,7 @@ async function writeAutoSave() {
 
   state.isAutoSaving = true;
   state.autoSavePending = false;
+  setDocumentBusy(true);
   try {
     setStatus("שומר אוטומטית...", "busy");
     const blob = await createDocxBlob();
@@ -1995,6 +1996,7 @@ async function writeAutoSave() {
     setStatus("השמירה האוטומטית נכשלה וכובתה", "error");
   } finally {
     state.isAutoSaving = false;
+    setDocumentBusy(false);
     if (state.autoSaveEnabled && state.autoSavePending) {
       state.autoSavePending = false;
       clearTimeout(state.autoSaveTimer);
