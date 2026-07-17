@@ -118,12 +118,15 @@ function updateActionAvailability() {
   els.versionHistoryButton.disabled = busy || !state.fileName;
 }
 
-function setDocumentBusy(isBusy) {
+function setDocumentBusy(isBusy, options = {}) {
+  const { lockEditing = true } = options;
   state.isSaving = isBusy;
-  els.editor.setAttribute("contenteditable", isBusy ? "false" : "true");
-  els.footnotesList.querySelectorAll(".footnote-body").forEach((body) => {
-    body.setAttribute("contenteditable", isBusy ? "false" : "true");
-  });
+  if (lockEditing) {
+    els.editor.setAttribute("contenteditable", isBusy ? "false" : "true");
+    els.footnotesList.querySelectorAll(".footnote-body").forEach((body) => {
+      body.setAttribute("contenteditable", isBusy ? "false" : "true");
+    });
+  }
   updateActionAvailability();
 }
 
@@ -1954,10 +1957,12 @@ async function writeAutoSave() {
 
   state.isAutoSaving = true;
   state.autoSavePending = false;
-  setDocumentBusy(true);
+  setDocumentBusy(true, { lockEditing: false });
+  const activeSurfaceSelection = captureActiveSurfaceSelection();
   try {
     setStatus("שומר אוטומטית...", "busy");
     const blob = await createDocxBlob();
+    restoreActiveSurfaceSelection(activeSurfaceSelection);
     await preserveCurrentFileVersion();
     let saved = false;
     for (let attempt = 0; attempt < 3 && !saved; attempt += 1) {
@@ -1996,7 +2001,7 @@ async function writeAutoSave() {
     setStatus("השמירה האוטומטית נכשלה וכובתה", "error");
   } finally {
     state.isAutoSaving = false;
-    setDocumentBusy(false);
+    setDocumentBusy(false, { lockEditing: false });
     if (state.autoSaveEnabled && state.autoSavePending) {
       state.autoSavePending = false;
       clearTimeout(state.autoSaveTimer);
@@ -2559,6 +2564,24 @@ function captureSurfaceSnapshot(surface) {
   };
 }
 
+function surfaceByName(name) {
+  if (name === "editor") return { name: "editor", root: els.editor };
+  if (name === "footnotes") return { name: "footnotes", root: els.footnotesList };
+  return null;
+}
+
+function captureActiveSurfaceSelection() {
+  const selection = window.getSelection();
+  const selectedNode = selection?.rangeCount ? selection.getRangeAt(0).startContainer : null;
+  const surface = editingSurfaceForNode(selectedNode) || editingSurfaceForNode(document.activeElement);
+  if (!surface) return null;
+  return {
+    surfaceName: surface.name,
+    selection: captureSurfaceSnapshot(surface).selection,
+    activeFootnoteId: state.activeFootnoteId,
+  };
+}
+
 function restoreSurfaceSelection(surface, selectionState) {
   if (!selectionState) return;
   const startNode = nodeFromPath(surface.root, selectionState.startPath);
@@ -2573,6 +2596,32 @@ function restoreSurfaceSelection(surface, selectionState) {
   const selection = window.getSelection();
   selection.removeAllRanges();
   selection.addRange(range);
+  const focusElement = surface.name === "footnotes"
+    ? (startNode.nodeType === Node.ELEMENT_NODE ? startNode : startNode.parentElement)?.closest?.(".footnote-body")
+    : surface.root;
+  focusElement?.focus?.({ preventScroll: true });
+}
+
+function hasLiveSelectionInSurface(surface) {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return false;
+  const range = selection.getRangeAt(0);
+  if (!surface.root.contains(range.startContainer) || !surface.root.contains(range.endContainer)) return false;
+  if (surface.name === "footnotes") {
+    return Boolean(document.activeElement?.closest?.(".footnote-body"));
+  }
+  return document.activeElement === surface.root || surface.root.contains(document.activeElement);
+}
+
+function restoreActiveSurfaceSelection(snapshot) {
+  if (!snapshot) return;
+  const surface = surfaceByName(snapshot.surfaceName);
+  if (!surface) return;
+  if (hasLiveSelectionInSurface(surface)) return;
+  if (snapshot.surfaceName === "footnotes" && snapshot.activeFootnoteId) {
+    state.activeFootnoteId = state.activeFootnoteId || snapshot.activeFootnoteId;
+  }
+  restoreSurfaceSelection(surface, snapshot.selection);
 }
 
 function updateFootnoteMapFromInput(event) {

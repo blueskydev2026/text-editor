@@ -263,6 +263,51 @@ test("autosave keeps the editor focused and writable while the file is being wri
   await expect(text).toContainText(" אבגד");
 });
 
+test("autosave keeps a footnote focused and writable while the file is being written", async ({ page }) => {
+  const fixture = await makeDocxFixture();
+  const base64 = fixture.toString("base64");
+  await page.addInitScript(({ base64 }) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    const file = new File([bytes], "autosave-footnote-focus.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    window.__releaseAutoSave = null;
+    window.__autoSaveWriteStarted = false;
+    window.__autoSaveWriteCount = 0;
+    window.showOpenFilePicker = async () => [{
+      getFile: async () => file,
+      createWritable: async () => ({
+        write: async () => {
+          window.__autoSaveWriteCount += 1;
+          window.__autoSaveWriteStarted = true;
+          if (window.__autoSaveWriteCount === 1) {
+            await new Promise((resolve) => { window.__releaseAutoSave = resolve; });
+          }
+        },
+        close: async () => {},
+      }),
+    }];
+  }, { base64 });
+
+  await page.goto("/");
+  await page.locator("#openFileButton").click();
+  await page.locator("#autoSaveButton").click();
+
+  const body = page.locator('[data-footnote-id="1"] .footnote-body');
+  await body.click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" A");
+  await expect.poll(() => page.evaluate(() => window.__autoSaveWriteStarted)).toBe(true);
+
+  await expect(body).toHaveAttribute("contenteditable", "true");
+  await expect.poll(() => page.evaluate(() => document.activeElement?.classList.contains("footnote-body"))).toBe(true);
+  await page.keyboard.type("BC");
+  await expect(body).toContainText("ABC");
+
+  await page.evaluate(() => window.__releaseAutoSave());
+  await expect.poll(() => page.evaluate(() => document.activeElement?.classList.contains("footnote-body"))).toBe(true);
+  await page.keyboard.type("D");
+  await expect(body).toContainText("ABCD");
+});
+
 test("controlled footnote drag moves only the reference and preserves text", async ({ page }) => {
   const fixture = await makeDocxFixture();
   await page.goto("/");
