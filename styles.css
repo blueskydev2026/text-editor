@@ -242,6 +242,13 @@ p {
   box-shadow: none;
 }
 
+.tool-section-primary {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 5;
+  background: var(--panel);
+}
+
 .tool-section-menu {
   position: relative;
 }
@@ -306,9 +313,10 @@ p {
 }
 
 .tool-popover {
-  position: absolute;
-  top: calc(100% + 7px);
-  right: 0;
+  position: fixed;
+  top: 0;
+  right: auto;
+  left: 0;
   z-index: 70;
   display: grid;
   gap: 8px;
@@ -908,6 +916,10 @@ p {
   border: 0;
   border-radius: 0;
   background: transparent;
+}
+
+.tool-section-primary {
+  background: #edf2fa;
 }
 
 .tool-section + .tool-section {

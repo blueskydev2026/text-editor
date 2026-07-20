@@ -2734,8 +2734,44 @@ function setZoomMode(mode) {
 
 function closeToolMenus(exceptMenu = null) {
   document.querySelectorAll(".tool-menu[open]").forEach((menu) => {
-    if (menu !== exceptMenu) menu.removeAttribute("open");
+    if (menu !== exceptMenu) {
+      menu.removeAttribute("open");
+      clearToolPopoverPosition(menu);
+    }
   });
+}
+
+function clearToolPopoverPosition(menu) {
+  const popover = menu?.querySelector(".tool-popover");
+  if (!popover) return;
+  popover.style.left = "";
+  popover.style.top = "";
+}
+
+function positionToolPopover(menu) {
+  if (!menu?.open) return;
+  const trigger = menu.querySelector("summary");
+  const popover = menu.querySelector(".tool-popover");
+  if (!trigger || !popover) return;
+
+  const margin = 8;
+  const triggerRect = trigger.getBoundingClientRect();
+  const popoverRect = popover.getBoundingClientRect();
+  const width = Math.min(popoverRect.width, window.innerWidth - margin * 2);
+  const height = popoverRect.height;
+  const left = Math.max(margin, Math.min(window.innerWidth - width - margin, triggerRect.right - width));
+  let top = triggerRect.bottom + 7;
+
+  if (top + height > window.innerHeight - margin) {
+    top = Math.max(margin, triggerRect.top - height - 7);
+  }
+
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+}
+
+function positionOpenToolMenus() {
+  document.querySelectorAll(".tool-menu[open]").forEach(positionToolPopover);
 }
 
 function headingTitle(heading) {
@@ -2905,10 +2941,17 @@ els.fileInput.addEventListener("change", async (event) => {
 
 document.querySelectorAll(".tool-menu").forEach((menu) => {
   menu.addEventListener("toggle", () => {
-    if (!menu.open) return;
+    if (!menu.open) {
+      clearToolPopoverPosition(menu);
+      return;
+    }
     closeToolMenus(menu);
+    requestAnimationFrame(() => positionToolPopover(menu));
   });
 });
+
+window.addEventListener("resize", positionOpenToolMenus);
+document.addEventListener("scroll", positionOpenToolMenus, true);
 
 document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "b" && state.isDocx) {

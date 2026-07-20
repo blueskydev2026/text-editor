@@ -18,7 +18,7 @@
       <div class="brand">
         <span class="brand-mark">א</span>
         <div>
-          <h1>עורך טקסט עברי <span class="app-version">v10</span></h1>
+          <h1>עורך טקסט עברי <span class="app-version">v11</span></h1>
           <p id="status">פתח קובץ DOCX או התחל מסמך חדש</p>
         </div>
       </div>
@@ -37,22 +37,37 @@
         <button id="installAppButton" class="button install-button" type="button" hidden>התקנה כאפליקציה</button>
       </div>
       <aside id="topTools" class="top-tools" aria-label="כלי עריכה" aria-hidden="false">
-        <section class="tool-section tool-section-menu">
-          <h2>ניווט</h2>
-          <details class="tool-menu">
-            <summary class="menu-button">ניווט</summary>
-            <div class="tool-popover nav-popover">
-              <label class="zoom-control">
-                <span>מיקום</span>
-                <input id="documentPositionInput" type="range" min="0" max="100" value="0" step="1">
-                <output id="documentPositionOutput">0%</output>
-              </label>
-              <div id="headingNav" class="heading-nav" aria-label="ניווט לפי כותרות">
-                <p class="nav-empty">אין כותרות במסמך</p>
-              </div>
-            </div>
-          </details>
+        <section class="tool-section tool-section-primary">
+          <h2>הערות שוליים</h2>
+          <button id="insertFootnoteButton" class="button full" type="button" title="Ctrl+Alt+F">הוסף הערת שוליים</button>
         </section>
+
+        <section class="tool-section">
+          <h2>הערות</h2>
+          <button id="toggleFootnotesButton" class="button full active" type="button" aria-pressed="true">הסתר חלונית</button>
+        </section>
+
+        <section class="tool-section">
+          <h2>עיצוב</h2>
+          <div class="toolbar-grid" aria-label="פקודות עיצוב">
+            <button class="icon-control" type="button" data-command="bold" title="הדגשה" aria-label="הדגשה"><strong>ב</strong></button>
+            <button class="icon-control" type="button" data-command="insertUnorderedList" title="רשימת תבליטים" aria-label="רשימת תבליטים">•</button>
+            <button class="icon-control" type="button" data-command="insertOrderedList" title="מספור" aria-label="מספור">1.</button>
+            <button class="icon-control" type="button" data-command="justifyRight" title="יישור לימין" aria-label="יישור לימין">≡›</button>
+            <button class="icon-control" type="button" data-command="justifyCenter" title="מרכוז" aria-label="מרכוז">≡</button>
+            <button class="icon-control" type="button" data-command="justifyFull" title="יישור לשני הצדדים" aria-label="יישור לשני הצדדים">▤</button>
+          </div>
+          <label class="select-row">
+            <span>סגנון</span>
+            <select id="formatSelect">
+              <option value="p">פסקה</option>
+              <option value="h1">כותרת 1</option>
+              <option value="h2">כותרת 2</option>
+              <option value="h3">כותרת 3</option>
+            </select>
+          </label>
+        </section>
+
         <section class="tool-section">
           <h2>תצוגה</h2>
           <div class="segmented" role="group" aria-label="רוחב מסך">
@@ -81,31 +96,21 @@
           </details>
         </section>
 
-        <section class="tool-section">
-          <h2>עיצוב</h2>
-          <div class="toolbar-grid" aria-label="פקודות עיצוב">
-            <button class="icon-control" type="button" data-command="bold" title="הדגשה" aria-label="הדגשה"><strong>ב</strong></button>
-            <button class="icon-control" type="button" data-command="insertUnorderedList" title="רשימת תבליטים" aria-label="רשימת תבליטים">•</button>
-            <button class="icon-control" type="button" data-command="insertOrderedList" title="מספור" aria-label="מספור">1.</button>
-            <button class="icon-control" type="button" data-command="justifyRight" title="יישור לימין" aria-label="יישור לימין">≡›</button>
-            <button class="icon-control" type="button" data-command="justifyCenter" title="מרכוז" aria-label="מרכוז">≡</button>
-            <button class="icon-control" type="button" data-command="justifyFull" title="יישור לשני הצדדים" aria-label="יישור לשני הצדדים">▤</button>
-          </div>
-          <label class="select-row">
-            <span>סגנון</span>
-            <select id="formatSelect">
-              <option value="p">פסקה</option>
-              <option value="h1">כותרת 1</option>
-              <option value="h2">כותרת 2</option>
-              <option value="h3">כותרת 3</option>
-            </select>
-          </label>
-        </section>
-
-        <section class="tool-section">
-          <h2>הערות שוליים</h2>
-          <button id="insertFootnoteButton" class="button full" type="button" title="Ctrl+Alt+F">הוסף הערת שוליים</button>
-          <button id="toggleFootnotesButton" class="button full active" type="button" aria-pressed="true">הסתר חלונית</button>
+        <section class="tool-section tool-section-menu">
+          <h2>ניווט</h2>
+          <details class="tool-menu">
+            <summary class="menu-button">ניווט</summary>
+            <div class="tool-popover nav-popover">
+              <label class="zoom-control">
+                <span>מיקום</span>
+                <input id="documentPositionInput" type="range" min="0" max="100" value="0" step="1">
+                <output id="documentPositionOutput">0%</output>
+              </label>
+              <div id="headingNav" class="heading-nav" aria-label="ניווט לפי כותרות">
+                <p class="nav-empty">אין כותרות במסמך</p>
+              </div>
+            </div>
+          </details>
         </section>
       </aside>
     </header>
