@@ -154,9 +154,18 @@ p {
 }
 
 .brand h1 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-size: 0.86rem;
   line-height: 1.1;
   font-weight: 700;
+}
+
+.app-version {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 600;
 }
 
 .brand p,
@@ -169,13 +178,17 @@ p {
 
 .file-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
   justify-content: flex-end;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .file-actions .button,
 .file-actions button {
+  flex: 0 0 auto;
   min-height: 30px;
   padding-inline: 9px;
   border-color: transparent;
@@ -206,11 +219,13 @@ p {
 .top-tools {
   flex: 1 0 100%;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   align-items: stretch;
   padding-top: 6px;
-  overflow: visible;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
   border-top: 1px solid rgba(217, 223, 214, 0.72);
 }
 
@@ -805,7 +820,7 @@ p {
 
   .file-actions .button,
   .file-actions button {
-    flex: 1 1 46%;
+    flex: 0 0 auto;
   }
 
   .top-tools {
