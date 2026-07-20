@@ -129,6 +129,7 @@ button:disabled {
 }
 
 .brand {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -177,12 +178,18 @@ p {
 }
 
 .file-actions {
+  flex: 1 1 360px;
+  min-width: 0;
   display: flex;
   flex-wrap: nowrap;
   gap: 4px;
-  justify-content: flex-end;
-  max-width: 100%;
+  justify-content: flex-start;
+  width: min(100%, 760px);
+  max-width: min(100%, 760px);
   overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  overscroll-behavior-inline: contain;
   scrollbar-width: thin;
 }
 
@@ -205,6 +212,9 @@ p {
 
 .file-actions .button.primary,
 .file-actions button.primary {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 4;
   background: var(--accent);
   border-color: var(--accent);
   color: white;
@@ -811,6 +821,7 @@ p {
   .file-actions,
   .top-tools {
     width: 100%;
+    max-width: 100%;
   }
 
   .editor-shell.split,
