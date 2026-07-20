@@ -183,6 +183,7 @@ p {
   display: flex;
   flex-wrap: nowrap;
   gap: 4px;
+  align-items: center;
   justify-content: flex-start;
   width: min(100%, 760px);
   max-width: min(100%, 760px);
@@ -196,7 +197,9 @@ p {
 .file-actions .button,
 .file-actions button {
   flex: 0 0 auto;
+  align-self: center;
   min-height: 30px;
+  height: 30px;
   padding-inline: 9px;
   border-color: transparent;
   background: transparent;
@@ -215,6 +218,7 @@ p {
   position: sticky;
   inset-inline-start: 0;
   z-index: 4;
+  min-width: max-content;
   background: var(--accent);
   border-color: var(--accent);
   color: white;
