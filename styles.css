@@ -194,6 +194,11 @@ p {
   scrollbar-width: thin;
 }
 
+.file-actions::-webkit-scrollbar,
+.top-tools::-webkit-scrollbar {
+  height: 6px;
+}
+
 .file-actions .button,
 .file-actions button {
   flex: 0 0 auto;
@@ -215,9 +220,6 @@ p {
 
 .file-actions .button.primary,
 .file-actions button.primary {
-  position: sticky;
-  inset-inline-start: 0;
-  z-index: 4;
   min-width: max-content;
   background: var(--accent);
   border-color: var(--accent);
@@ -819,13 +821,45 @@ p {
   .appbar {
     align-items: flex-start;
     flex-direction: column;
+    gap: 5px;
     min-height: 0;
+    padding: 4px 8px;
+  }
+
+  .brand {
+    min-height: 26px;
+  }
+
+  .brand-mark {
+    width: 22px;
+    height: 22px;
+  }
+
+  .brand h1 {
+    font-size: 0.82rem;
+  }
+
+  .brand p {
+    font-size: 0.72rem;
+    line-height: 1.1;
   }
 
   .file-actions,
   .top-tools {
     width: 100%;
     max-width: 100%;
+  }
+
+  .file-actions {
+    flex: 0 0 auto;
+    min-height: 32px;
+    padding-bottom: 0;
+  }
+
+  .top-tools {
+    flex: 0 0 auto;
+    min-height: 38px;
+    padding-block: 3px;
   }
 
   .editor-shell.split,
@@ -848,6 +882,17 @@ p {
 
   .top-tools {
     padding-bottom: 2px;
+  }
+
+  .appbar {
+    gap: 4px;
+  }
+
+  .brand p {
+    max-width: calc(100vw - 64px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .editor-topline {
@@ -1065,5 +1110,27 @@ p {
 
   .tool-section {
     flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .top-tools {
+    min-height: 36px;
+    padding: 2px 6px;
+  }
+
+  .tool-section {
+    min-height: 30px;
+    padding-inline: 6px;
+  }
+
+  .icon-control,
+  .toolbar-grid button,
+  .menu-button,
+  .segment,
+  .select-row,
+  .select-row select,
+  .top-tools .button.full {
+    min-height: 28px;
   }
 }
